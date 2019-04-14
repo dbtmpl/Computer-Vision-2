@@ -136,8 +136,8 @@ def visualize_source_and_target(A1, A2):
     '''
     point_cloud_source = o3d.PointCloud()
     point_cloud_target = o3d.PointCloud()
-    point_cloud_source.points = o3d.Vector3dVector(source)
-    point_cloud_target.points = o3d.Vector3dVector(target)
+    point_cloud_source.points = o3d.Vector3dVector(A1)
+    point_cloud_target.points = o3d.Vector3dVector(A2)
     o3d.draw_geometries([point_cloud_source, point_cloud_target])
 
 
