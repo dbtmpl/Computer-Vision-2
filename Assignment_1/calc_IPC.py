@@ -1,11 +1,18 @@
 from scipy import spatial
 import numpy as np
-# from open3d import open3d as o3d
 import open3d as o3d
 import scipy.io
 
 
 def calc_IPC(base_point_cloud, target_point_cloud, base_point_cloud_normal=None, target_point_cloud_normal=None):
+    '''
+    Performs the ICP algorithm ...
+    :param base_point_cloud:
+    :param target_point_cloud:
+    :param base_point_cloud_normal:
+    :param target_point_cloud_normal:
+    :return:
+    '''
     if base_point_cloud_normal is not None:
         A1, A1_normal = cleanInput(base_point_cloud, base_point_cloud_normal)
         A2, A2_normal = cleanInput(target_point_cloud, target_point_cloud_normal)
@@ -54,6 +61,13 @@ def calc_IPC(base_point_cloud, target_point_cloud, base_point_cloud_normal=None,
 
 
 def cleanInput(point_cloud, point_cloud_normal):
+    '''
+    Filters out all point where the normal is NaN and the Z-value is smaller 1.
+
+    :param point_cloud: The raw point clouds
+    :param point_cloud_normal: The normals corresponding to the point cloud
+    :return: cleaned point cloud and normals
+    '''
     # Keep indices where row not Nan
     el_not_nan = ~np.isnan(point_cloud_normal)
     rows_not_nan = np.logical_or(el_not_nan[:, 0], el_not_nan[:, 1], el_not_nan[:, 2])
@@ -89,9 +103,9 @@ def get_matching_targets(base_point_cloud, target_point_cloud):
 def compute_SVD(A1, A2):
     """
     After: https://igl.ethz.ch/projects/ARAP/svd_rot.pdf
-    :param A1:
-    :param A2:
-    :return:
+    :param A1: Base point cloud
+    :param A2: Target point cloud
+    :return: Rotation matrix and translation vector
     """
 
     centroid_A1 = np.mean(A1, axis=0)
@@ -113,7 +127,13 @@ def compute_SVD(A1, A2):
     return R, t
 
 
-def visualize_source_and_target(source, target):
+def visualize_source_and_target(A1, A2):
+    '''
+
+    :param A1: Base point cloud
+    :param A2: Target point cloud
+    :return: Shows both point cloud in one plot
+    '''
     point_cloud_source = o3d.PointCloud()
     point_cloud_target = o3d.PointCloud()
     point_cloud_source.points = o3d.Vector3dVector(source)
