@@ -31,7 +31,7 @@ def calc_IPC(base_point_cloud, target_point_cloud, base_point_cloud_normal=None,
     # dummy values for initialization
     current_rms, old_RMS = 0.0, 200.0
     # Iterate until RMS is unchanged
-    while not (np.isclose(current_rms, old_RMS, atol=0.05)):
+    while not (np.isclose(current_rms, old_RMS, atol=0.015)):
         old_RMS = current_rms
         # 1. For each point in the base set (A1), find with brute force the best matching point in the target point set (A2)
         matching_A2 = get_matching_targets(A1, A2)
@@ -55,7 +55,7 @@ def calc_IPC(base_point_cloud, target_point_cloud, base_point_cloud_normal=None,
         final_t = R.dot(final_t) + t
 
     # Final Visualization
-    visualize_source_and_target(A1, A2)
+    # visualize_source_and_target(A1, A2)s
 
     return final_R, final_t
 
@@ -114,8 +114,9 @@ def compute_SVD(A1, A2):
     A1_centered = A1 - centroid_A1
     A2_centered = A2 - centroid_A2
 
-    W = np.eye(A1_centered.shape[0])
-    S = A1_centered.T.dot(W).dot(A2_centered)
+    # W = np.eye(A1_centered.shape[0])
+    # S = A1_centered.T.dot(W).dot(A2_centered)
+    S = A1_centered.T.dot(A2_centered)
     U, _, V = np.linalg.svd(S)
 
     ident = np.identity(U.shape[0])
@@ -139,17 +140,3 @@ def visualize_source_and_target(A1, A2):
     point_cloud_source.points = o3d.Vector3dVector(A1)
     point_cloud_target.points = o3d.Vector3dVector(A2)
     o3d.draw_geometries([point_cloud_source, point_cloud_target])
-
-
-# base_point_cloud = o3d.read_point_cloud("Data/data/0000000000.pcd")
-# base_point_cloud_coords = np.asarray(base_point_cloud.points)
-# base_point_cloud_normal = np.genfromtxt("Data/data/0000000000_normal.pcd", delimiter=' ', skip_header=11)
-#
-# target_point_cloud = o3d.read_point_cloud("Data/data/0000000001.pcd")
-# target_point_cloud_coords = np.asarray(target_point_cloud.points)
-# target_point_cloud_normal = np.genfromtxt("Data/data/0000000001_normal.pcd", delimiter=' ', skip_header=11)
-
-base_point_cloud = scipy.io.loadmat('Data/source.mat')["source"].T
-target_point_cloud = scipy.io.loadmat('Data/target.mat')["target"].T
-
-R, t = calc_IPC(base_point_cloud, target_point_cloud)
