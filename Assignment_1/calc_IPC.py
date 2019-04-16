@@ -47,15 +47,19 @@ def calc_IPC(base_point_cloud, target_point_cloud, base_point_cloud_normal=None,
         # visualize_source_and_target(A1, A2)
 
         # Updating the base point cloud
-        # A1 = np.dot(A1, R.T) + t
-        A1 = np.array([R.dot(a) + t.flatten() for a in A1])
+        A1 = np.dot(A1, R.T) + t
 
         # update overall R and t
         final_R = R.dot(final_R)
         final_t = R.dot(final_t) + t
 
     # Final Visualization
-    # visualize_source_and_target(A1, A2)s
+    # visualize_source_and_target(A1, A2)
+
+    # Test final transformation matrix
+    # A1_test, A1_normal = cleanInput(base_point_cloud, base_point_cloud_normal)
+    # test_A1 = np.dot(A1_test, final_R.T) + final_t
+    # visualize_source_and_target(test_A1, A2)
 
     return final_R, final_t
 
@@ -74,7 +78,7 @@ def cleanInput(point_cloud, point_cloud_normal):
 
     # points shallow enough to survice (depth < 1)
     shallow_rows = point_cloud[:, 2] < 1
-    rows_to_keep = np.logical_or(rows_not_nan, shallow_rows)
+    rows_to_keep = np.logical_and(rows_not_nan, shallow_rows)
 
     A = point_cloud[rows_to_keep, :]
     A_normal = point_cloud_normal[rows_to_keep, :]
