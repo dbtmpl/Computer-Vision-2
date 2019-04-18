@@ -2,10 +2,11 @@ from scipy import spatial
 import numpy as np
 import open3d as o3d
 import scipy.io
+import cv2 as cv
 
 
-def calc_IPC(base_point_cloud, target_point_cloud, base_point_cloud_normal=None, target_point_cloud_normal=None,
-             sampling=("All", "undf.")):
+def calc_ICP(base_point_cloud, target_point_cloud, base_point_cloud_normal=None, target_point_cloud_normal=None,
+             base_point_cloud_colors=None, sampling=("All", "undf.")):
     '''
     Performs the ICP algorithm ...
     :param base_point_cloud:
@@ -22,15 +23,19 @@ def calc_IPC(base_point_cloud, target_point_cloud, base_point_cloud_normal=None,
     sample_size = sampling[1]
 
     if base_point_cloud_normal is not None:
-        A1_all, A1_normal_all = cleanInput(base_point_cloud, base_point_cloud_normal)
+        A1_all, A1_normal_all, A1_colors_all = cleanInput(base_point_cloud, base_point_cloud_normal, base_point_cloud_colors)
         A2_all, A2_normal_all = cleanInput(target_point_cloud, target_point_cloud_normal)
 
         if sampling_tech == "uniform" or sampling_tech == "rnd_i":
             indices = np.random.choice(A1_all.shape[0], sample_size, replace=False)
             A1 = A1_all[indices]
-            A1_normal = A1_normal_all[indices]
+            # A1_normal = A1_normal_all[indices]
+        elif sampling_tech == "inf_reg":
+            indices = sub_sampling_informative_regions(A1_all, A1_normal_all, A1_colors_all)
+            A1 = A1_all[indices]
+
         # TODO: implement sub-sampling more from informative regions
-        else: # sampling technique 'all'
+        else:  # sampling technique 'all'
             A1 = A1_all
             A1_normal = A1_normal_all
 
@@ -48,7 +53,7 @@ def calc_IPC(base_point_cloud, target_point_cloud, base_point_cloud_normal=None,
     # dummy values for initialization
     current_rms, old_RMS = 0.0, 200.0
     # Iterate until RMS is unchanged
-    while not (np.isclose(current_rms, old_RMS, atol=0.00001)):
+    while not (np.isclose(current_rms, old_RMS, atol=0.000001)):
         old_RMS = current_rms
         # 1. For each point in the base set (A1), find with brute force the best matching point in the target point set (A2)
         matching_A2 = get_matching_targets(A1, A2_all)
@@ -86,7 +91,7 @@ def calc_IPC(base_point_cloud, target_point_cloud, base_point_cloud_normal=None,
     return final_R, final_t
 
 
-def cleanInput(point_cloud, point_cloud_normal):
+def cleanInput(point_cloud, point_cloud_normal, point_cloud_colors=None):
     '''
     Filters out all point where the normal is NaN and the Z-value is smaller 1.
 
@@ -104,6 +109,10 @@ def cleanInput(point_cloud, point_cloud_normal):
 
     A = point_cloud[rows_to_keep, :]
     A_normal = point_cloud_normal[rows_to_keep, :]
+
+    if point_cloud_colors is not None:
+        A_colors = point_cloud_colors[rows_to_keep, :]
+        return A, A_normal, A_colors
 
     return A, A_normal
 
@@ -166,3 +175,23 @@ def visualize_source_and_target(A1, A2):
     point_cloud_source.points = o3d.Vector3dVector(A1)
     point_cloud_target.points = o3d.Vector3dVector(A2)
     o3d.draw_geometries([point_cloud_source, point_cloud_target])
+
+
+def sub_sampling_informative_regions(point_cloud, point_cloud_normals, point_cloud_colors):
+    """
+    Using SIFT descriptors and Normal-Space Sampling to get a more informative sample of points
+
+    :param point_cloud:
+    :param point_cloud_normals:
+    :param point_cloud_colors:
+    :return:
+    """
+
+    # TODO: Decide SIFT reasonable? Might be a pain reconstructing image as x, y coordinates in point_cloud are relative
+    # TODO: Implement Normal-Space Sampling
+
+    # sift = cv.xfeatures2d.SIFT_create()
+    # kp = sift.detect(gray, None)
+
+
+    return indices

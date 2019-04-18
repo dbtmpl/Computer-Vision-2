@@ -5,37 +5,40 @@ import Assignment_1.calc_IPC as IPC
 import time
 
 
-def run_experiments(sample_size, sample_technique):
+def estimate_transformations(sample_size, sample_technique):
     """
     TODO: Augment function for all the experimental conditions
     :return:
     """
 
-    start = time.time()
+    start_time = time.time()
 
     # Keeps track of the transformations across consecutive frames. e.g entry 0: frame 0 to 1
-    transformations = np.zeros((0, 3, 4))
+    transformations = np.zeros((0, 4, 4))
 
     rotation = np.eye(3)
     translation = np.zeros(3)
 
-    for i in np.arange(99):
+    for i in np.arange(1):
         base, target = load_point_clouds(i)
 
         base_point_cloud_coords, base_point_cloud_normal = base[1], base[2]
         target_point_cloud_coords, target_point_cloud_normal = target[1], target[2]
 
-        R, t = IPC.calc_IPC(base_point_cloud_coords, target_point_cloud_coords, base_point_cloud_normal,
-                            target_point_cloud_normal, (sample_technique, sample_size))
+        base_point_cloud_colors = np.asarray(base[0].colors)
+
+        R, t = IPC.calc_ICP(base_point_cloud_coords, target_point_cloud_coords, base_point_cloud_normal,
+                            target_point_cloud_normal, base_point_cloud_colors, (sample_technique, sample_size))
 
         # Calc and save direct transformations - experiment
         rotation = R.dot(rotation)
         translation = R.dot(translation) + t
         transform = np.hstack((rotation, translation.reshape((3, 1))))
-        transformations = np.append(transformations, transform.reshape((1, 3, 4)), axis=0)
+        transform_affine = np.append(transform, np.asarray([0, 0, 0, 1]).reshape((1, 4)), axis=0)
+        transformations = np.append(transformations, transform_affine.reshape((1, 4, 4)), axis=0)
 
-    end = time.time()
-    print("Time elapsed:", end - start)
+    end_time = time.time()
+    print("Time elapsed:", end_time - start_time)
 
     np.save("Transformations/data_transformations_sample_" + str(sample_size) + "_" + sample_technique, transformations)
 
@@ -47,8 +50,8 @@ def load_point_clouds(index, load_only_base=False):
     :param load_only_base: Index of the current base point cloud
     :return: base and target point cloud data
     """
-    file_id_source = "00000000" + "{0:0=2d}".format(index)
-    file_id_target = "00000000" + "{0:0=2d}".format(index + 1)
+    file_id_source = "00000000" + "{0:0=2d}".format(index + 1)
+    file_id_target = "00000000" + "{0:0=2d}".format(index)
 
     print(file_id_source)
     # print(file_id_target)
@@ -74,13 +77,15 @@ def load_point_clouds(index, load_only_base=False):
     return base, target
 
 
-def reconstruct_3d():
+def reconstruct_3d(sample_size, sample_technique):
     """
 
     :return:
     """
 
-    transformations = np.load("Transformations/data_transformations_sample_5000_uniform.npy")
+    transformations = np.load(
+        "Transformations/data_transformations_sample_" + str(sample_size) + "_" + sample_technique + ".npy")
+    # transformations = np.load("Transformations/data_transformations_sample_5000_uniform.npy")
     print(transformations.shape)
 
     reconstructed_data = np.zeros((0, 3))
@@ -94,11 +99,9 @@ def reconstruct_3d():
 
         if i > 0:
             trans = transformations[i - 1]
-            inv_trans = np.linalg.inv(np.append(trans, np.asarray([0, 0, 0, 1]).reshape((1, 4)), axis=0))
-            # trans_affine = np.append(trans, np.asarray([0, 0, 0, 1]).reshape((1, 4)), axis=0)
 
             A1 = np.hstack((A1, np.ones((A1.shape[0], 1))))
-            A1 = np.dot(A1, inv_trans.T)
+            A1 = np.dot(A1, trans.T)
 
         reconstructed_data = np.append(reconstructed_data, A1[:, 0:3], axis=0)
 
@@ -140,11 +143,37 @@ def visualize_reconstructed(reconstructed):
     o3d.draw_geometries([point_cloud_rec])
 
 
+def run_experiments_ex_2():
+    """
+    Test ICP algorithm w.r.t. (a) accuracy, (b) speed, (c) stability and (d) tolerance to noise by changing the
+    point selection technique: (a) all the points, (b) uniform sub-sampling, (c) random sub-sampling in each iteration
+    and (d) sub-sampling more from informative regions
+    :return:
+    """
+
+    # TODO: Run all experiments for exercise 2.1
+
+    pass
+
+
+def run_experiments_ex_3():
+    """
+    - 3.1 (b) camera pose and merge the results using every 2 nd , 4 th , and 10 th frames
+    - 3.2 ...
+    :return:
+    """
+    # TODO: Run experiments for excericise 3.X
+
+    pass
+
+
 # base_point_cloud = scipy.io.loadmat('Data/source.mat')["source"].T
 # target_point_cloud = scipy.io.loadmat('Data/target.mat')["target"].T
 #
 # R, t = IPC.calc_IPC(base_point_cloud, target_point_cloud)
 
 
-run_experiments(5000, "uniform")
-reconstruct_3d()
+estimate_transformations(5000, "inf_reg")
+# reconstruct_3d(5000, "uniform")
+
+# base = load_point_clouds(20, True)
