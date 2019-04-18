@@ -23,26 +23,23 @@ def calc_ICP(base_point_cloud, target_point_cloud, base_point_cloud_normal=None,
     sample_size = sampling[1]
 
     if base_point_cloud_normal is not None:
-        A1_all, A1_normal_all, A1_colors_all = cleanInput(base_point_cloud, base_point_cloud_normal, base_point_cloud_colors)
+        A1_all, A1_normal_all, A1_colors_all = cleanInput(base_point_cloud, base_point_cloud_normal,
+                                                          base_point_cloud_colors)
         A2_all, A2_normal_all = cleanInput(target_point_cloud, target_point_cloud_normal)
 
         if sampling_tech == "uniform" or sampling_tech == "rnd_i":
             indices = np.random.choice(A1_all.shape[0], sample_size, replace=False)
             A1 = A1_all[indices]
-            # A1_normal = A1_normal_all[indices]
         elif sampling_tech == "inf_reg":
-            indices = sub_sampling_informative_regions(A1_all, A1_normal_all, A1_colors_all)
+            indices = sub_sampling_informative_regions(A1_all, A1_normal_all, A1_colors_all, sample_size)
             A1 = A1_all[indices]
-
-        # TODO: implement sub-sampling more from informative regions
         else:  # sampling technique 'all'
             A1 = A1_all
-            A1_normal = A1_normal_all
 
         print(A1.shape)
         print(A2_all.shape)
 
-    # If no normals are specified => test dummy data is loaded
+    # If no normals are specified => dummy data is loaded
     else:
         A1 = base_point_cloud
         A2_all = target_point_cloud
@@ -177,7 +174,7 @@ def visualize_source_and_target(A1, A2):
     o3d.draw_geometries([point_cloud_source, point_cloud_target])
 
 
-def sub_sampling_informative_regions(point_cloud, point_cloud_normals, point_cloud_colors):
+def sub_sampling_informative_regions(point_cloud, point_cloud_normals, point_cloud_colors, sampling_size):
     """
     Using SIFT descriptors and Normal-Space Sampling to get a more informative sample of points
 
@@ -188,10 +185,35 @@ def sub_sampling_informative_regions(point_cloud, point_cloud_normals, point_clo
     """
 
     # TODO: Decide SIFT reasonable? Might be a pain reconstructing image as x, y coordinates in point_cloud are relative
-    # TODO: Implement Normal-Space Sampling
 
     # sift = cv.xfeatures2d.SIFT_create()
     # kp = sift.detect(gray, None)
 
+    reference_vec = np.asarray([0, 0, 1])
 
-    return indices
+    consine_similarities = []
+    # spatial.distance.cosine apparently not broadcastable... :(
+    for normal_vec in point_cloud_normals:
+        consine_similarities.append(1 - spatial.distance.cosine(normal_vec[0:3], reference_vec))
+
+    # Divide cosine similarities to reference vector in bins
+    bins = np.arange(-1, 1, 0.1)
+    inds = np.digitize(np.asarray(consine_similarities), bins)
+    ind_sample = int(sampling_size / bins.shape[0])
+
+    final_indices = np.zeros(0, dtype="int32")
+    for bin in np.arange(bins.shape[0]):
+        eq_idx = np.argwhere(inds == bin).flatten()
+        if eq_idx.size is not 0:
+            k = min(ind_sample, eq_idx.shape[0])
+            final_indices = np.append(final_indices, np.random.choice(eq_idx, k, replace=False))
+
+    # If some bins are emtpy, or have less entries than ind_sample, we have to fill them up to reach the sample size
+    # For simplicity, we do this with uniform sampling.
+    res = sampling_size - final_indices.shape[0]
+    if res > 0:
+        add_inx = np.random.choice(
+            np.argwhere(~np.isin(np.arange(point_cloud_normals.shape[0]), final_indices)).flatten(), res, replace=False)
+        final_indices = np.append(final_indices, add_inx)
+
+    return final_indices

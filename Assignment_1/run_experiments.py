@@ -169,7 +169,7 @@ def run_experiments_ex_3():
 
 # base_point_cloud = scipy.io.loadmat('Data/source.mat')["source"].T
 # target_point_cloud = scipy.io.loadmat('Data/target.mat')["target"].T
-#
+
 # R, t = IPC.calc_IPC(base_point_cloud, target_point_cloud)
 
 
