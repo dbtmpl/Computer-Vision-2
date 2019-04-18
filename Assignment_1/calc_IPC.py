@@ -4,26 +4,43 @@ import open3d as o3d
 import scipy.io
 
 
-def calc_IPC(base_point_cloud, target_point_cloud, base_point_cloud_normal=None, target_point_cloud_normal=None):
+def calc_IPC(base_point_cloud, target_point_cloud, base_point_cloud_normal=None, target_point_cloud_normal=None,
+             sampling=("All", "undf.")):
     '''
     Performs the ICP algorithm ...
     :param base_point_cloud:
     :param target_point_cloud:
     :param base_point_cloud_normal:
     :param target_point_cloud_normal:
+    :param sampling: Tuple with two entries:
+        (1) Sampling technique as string: 'all', 'uniform', 'rnd_i' (random sub-sampling in each iteration) and 'inf_reg' (sub-sampling more from informative regions)
+        (2) Sample size as int
     :return:
     '''
-    if base_point_cloud_normal is not None:
-        A1, A1_normal = cleanInput(base_point_cloud, base_point_cloud_normal)
-        A2, A2_normal = cleanInput(target_point_cloud, target_point_cloud_normal)
 
-        print(A1.shape, A1_normal.shape)
-        print(A2.shape, A2_normal.shape)
+    sampling_tech = sampling[0]
+    sample_size = sampling[1]
+
+    if base_point_cloud_normal is not None:
+        A1_all, A1_normal_all = cleanInput(base_point_cloud, base_point_cloud_normal)
+        A2_all, A2_normal_all = cleanInput(target_point_cloud, target_point_cloud_normal)
+
+        if sampling_tech == "uniform" or sampling_tech == "rnd_i":
+            indices = np.random.choice(A1_all.shape[0], sample_size, replace=False)
+            A1 = A1_all[indices]
+            A1_normal = A1_normal_all[indices]
+        # TODO: implement sub-sampling more from informative regions
+        else: # sampling technique 'all'
+            A1 = A1_all
+            A1_normal = A1_normal_all
+
+        print(A1.shape)
+        print(A2_all.shape)
 
     # If no normals are specified => test dummy data is loaded
     else:
         A1 = base_point_cloud
-        A2 = target_point_cloud
+        A2_all = target_point_cloud
 
     final_R = np.identity(3)
     final_t = np.zeros(3)
@@ -31,10 +48,10 @@ def calc_IPC(base_point_cloud, target_point_cloud, base_point_cloud_normal=None,
     # dummy values for initialization
     current_rms, old_RMS = 0.0, 200.0
     # Iterate until RMS is unchanged
-    while not (np.isclose(current_rms, old_RMS, atol=0.015)):
+    while not (np.isclose(current_rms, old_RMS, atol=0.00001)):
         old_RMS = current_rms
         # 1. For each point in the base set (A1), find with brute force the best matching point in the target point set (A2)
-        matching_A2 = get_matching_targets(A1, A2)
+        matching_A2 = get_matching_targets(A1, A2_all)
 
         # Calculate current error
         current_rms = calc_rms(A1, matching_A2)
@@ -52,6 +69,11 @@ def calc_IPC(base_point_cloud, target_point_cloud, base_point_cloud_normal=None,
         # update overall R and t
         final_R = R.dot(final_R)
         final_t = R.dot(final_t) + t
+
+        if sampling_tech == "rnd_i":
+            indices = np.random.choice(A1_all.shape[0], sample_size, replace=False)
+            A1 = A1_all[indices]
+            # A1_normal = A1_normal_all[indices]
 
     # Final Visualization
     # visualize_source_and_target(A1, A2)
