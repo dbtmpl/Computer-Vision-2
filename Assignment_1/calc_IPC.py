@@ -1,6 +1,7 @@
 from scipy import spatial
 import numpy as np
 import open3d as o3d
+from pynndescent import NNDescent
 
 
 def calc_icp(base_points, target_points, base_normals=None, target_normals=None, base_colors=None, sampling_tech="All",
@@ -34,7 +35,7 @@ def calc_icp(base_points, target_points, base_normals=None, target_normals=None,
         else:
             base = base_all
 
-        print('#Samples ⇒ Base:{}, Target:{}'.format(base.size, target.size))
+        print('#Samples ⇒ Base: {}, Target: {}'.format(base.size, target.size))
 
     # If no normals are specified => dummy data is loaded
     else:
@@ -44,19 +45,18 @@ def calc_icp(base_points, target_points, base_normals=None, target_normals=None,
     rot = np.identity(3)
     trans = np.zeros(3)
     # dummy values for initialization
-    current_rms, old_rms = 0.0, 200.0
+    errors = [0.0, 200]
+    index = NNDescent(target)
 
     # Iterate until RMS is unchanged
-    while not (np.isclose(current_rms, old_rms, atol=0.000001)):
-        old_rms = current_rms
+    while not (np.isclose(errors[-2], errors[-1], atol=0.000001)):
 
         # 1. For each point in the base set (A1):
-        # find with brute force the best matching point in the target point set (A2)
-        matches = get_matching_targets(base, target)
+        matching_indices, _ = index.query(base, k=1)
 
         # Calculate current error
-        current_rms = calc_rms(base, matches)
-        print("Current RMS", current_rms)
+        errors.append(calc_rms(base, matches))
+        print('Step: {:5d} RMS: {}'.format(len(errors)-2, errors[-1]), end='\n')
 
         # 2. Refine the rotation matrix R and translation vector t using using SVD
         _r, _t = compute_svd(base, matches)
@@ -117,19 +117,6 @@ def calc_rms(base, target):
     return np.sqrt(np.mean(np.sum(np.square(base - target))))
 
 
-def get_matching_targets(base, target):
-    """
-    Finds the closest point in the target point cloud for each base point cloud member.
-    Note: Since the brute force approach was not feasible with our hardware, we build up a tree. This is inspired by
-    the following stack overflow article: https://stackoverflow.com/questions/32446703/find-closest-vector-from-a-list-of-vectors-python
-
-    """
-
-    tree = spatial.KDTree(target)
-    min_distances, matching_indices = tree.query(base)
-    return target[matching_indices, :]
-
-
 def compute_svd(base, target):
     """
     After: https://igl.ethz.ch/projects/ARAP/svd_rot.pdf
@@ -153,7 +140,7 @@ def compute_svd(base, target):
     ident[-1, -1] = np.linalg.det(V.T @ U)
 
     R = V.T @ ident @ U.T
-    t = target_centroid - R @ base_centroids
+    t = target_centroid - R @ base_centroid
 
     return R, t
 
