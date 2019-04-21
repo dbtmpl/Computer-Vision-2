@@ -52,7 +52,7 @@ def calc_icp(base_points, target_points, base_normals=None, target_normals=None,
     while not (np.isclose(errors[-2], errors[-1], atol=0.000001)):
 
         # 1. For each point in the base set (A1):
-        matching_indices, _ = index.query(base, k=1)
+        matches, _ = index.query(base, k=1)
 
         # Calculate current error
         errors.append(calc_rms(base, matches))
