@@ -4,8 +4,8 @@ import open3d as o3d
 from pynndescent import NNDescent
 
 
-def calc_icp(base_points, target_points, base_normals=None, target_normals=None, base_colors=None, sampling_tech="All",
-             sample_size=None):
+def calc_icp(base_points, target_points, base_normals=None, target_normals=None, base_colors=None,
+             sampling_tech="All", sample_size=None):
     """
     Performs the ICP algorithm ...
     :param base_points: point cloud to be aligned
@@ -26,15 +26,15 @@ def calc_icp(base_points, target_points, base_normals=None, target_normals=None,
         # Random subsampling
         if sampling_tech == "uniform" or sampling_tech == "rnd_i":
             indices = np.random.choice(base_all.shape[0], sample_size, replace=False)
-            base = base_all[indices]
         # Subsampling from informative regions
         elif sampling_tech == "inf_reg":
             indices = sub_sampling_informative_regions(base_all, base_normals_all, base_colors, sample_size)
-            base = base_all[indices]
         # Just take em all, no samlping
         else:
-            base = base_all
+            indices = range(0, len(base))
 
+        base = base_all[indices]
+        base_normals = base_normals_all[indices]
         print('#Samples ⇒ Base: {}, Target: {}'.format(base.size, target.size))
 
     # If no normals are specified => dummy data is loaded
@@ -52,11 +52,12 @@ def calc_icp(base_points, target_points, base_normals=None, target_normals=None,
     while not (np.isclose(errors[-2], errors[-1], atol=0.000001)):
 
         # 1. For each point in the base set (A1):
-        matches, _ = index.query(base, k=1)
+        match_idx, _ = index.query(base, k=1)
+        matches = target[match_idx.flatten(),:]
 
         # Calculate current error
         errors.append(calc_rms(base, matches))
-        print('Step: {:5d} RMS: {}'.format(len(errors)-2, errors[-1]), end='\n')
+        print('Step: {:5d} RMS: {}'.format(len(errors)-2, errors[-1]), end='\r')
 
         # 2. Refine the rotation matrix R and translation vector t using using SVD
         _r, _t = compute_svd(base, matches)
@@ -79,9 +80,9 @@ def calc_icp(base_points, target_points, base_normals=None, target_normals=None,
     # visualize_base_and_target(base, tagret)
 
     # Test final transformation matrix
-    # base_test, base_normal = cleanInput(base_point_cloud, base_point_cloud_normal)
-    # test_base = np.dot(base_test, rot.T) + trans
-    # visualize_base_and_target(test_base, target)
+    base_test, base_normal = clean_input(base, base_normals)
+    test_base = np.dot(base_test, rot.T) + trans
+    visualize_base_and_target(test_base, target)
 
     return rot, trans
 
