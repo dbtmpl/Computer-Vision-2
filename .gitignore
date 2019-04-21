@@ -3,3 +3,4 @@ Assignment_1/Data/data/
 *.xml
 __pycache__/
 *.txt
+.venv/
