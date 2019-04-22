@@ -1,3 +1,4 @@
 open3d-python==0.6.0.0
 pynndescent==0.2.1
 scipy==1.2.1
+matplotlib==3.0.3

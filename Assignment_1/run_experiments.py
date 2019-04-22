@@ -6,88 +6,54 @@ import pickle
 import matplotlib.pyplot as plt
 
 
-def estimate_transformations(sample_size, sample_technique, frame_gap):
+def estimate_transformations(sample_size, sample_technique, stride):
     """
     TODO: Augment function for all the experimental conditions
 
     :param sample_size:
     :param sample_technique:
-    :param frame_gap: Parameter for implementing 3.1 (b)
+    :param stride: The stride between frames
     :return:
     """
 
     # Keeps track of the transformations across consecutive frames. e.g entry 0: frame 0 to 1
     transformations = np.zeros((0, 4, 4))
 
-    rotation = np.eye(3)
-    translation = np.zeros(3)
+    rot = np.eye(3)
+    trans = np.zeros(3)
 
-    for i in np.arange(0, 99, frame_gap):
-        base, target = load_point_clouds(i, frame_gap)
-
+    for i in range(0, 1, stride):
+        base = load_point_cloud(i + stride)
         if base is None:
             break
+        base_cloud, base_points, base_normals = base
+        target_cloud, target_points, target_normals = load_point_cloud(i)
+        base_colors = np.asarray(base_cloud.colors)
 
-        base_point_cloud_coords, base_point_cloud_normal = base[1], base[2]
-        target_point_cloud_coords, target_point_cloud_normal = target[1], target[2]
+        _rot, _trans, errors = calc_icp(base_points, target_points, base_normals, target_normals, base_colors,
+                                        sample_technique, sample_size)
 
-        base_point_cloud_colors = np.asarray(base[0].colors)
+        # Update overall transformations:
+        rot = _rot @ rot
+        trans = _rot @ trans + _trans
 
-        R, t, rms_errors = calc_icp(base_point_cloud_coords, target_point_cloud_coords, base_point_cloud_normal,
-                                    target_point_cloud_normal, base_point_cloud_colors, sample_technique, sample_size)
-
-        # Calc and save as affine transformation
-        rotation = R.dot(rotation)
-        translation = R.dot(translation) + t
-        transform = np.hstack((rotation, translation.reshape((3, 1))))
+        transform = np.hstack((rot, trans.reshape((3, 1))))
         transform_affine = np.append(transform, np.asarray([0, 0, 0, 1]).reshape((1, 4)), axis=0)
         transformations = np.append(transformations, transform_affine.reshape((1, 4, 4)), axis=0)
 
-    np.save("Transformations/data_transformations_sample_" + str(sample_size) + "_" + sample_technique + "_fg" + str(
-        frame_gap), transformations)
+    np.save("Transformations/data_transformations_sample_{}_{}_fg{}".format(
+        str(sample_size), sample_technique, str(stride)), transformations)
 
 
-def load_point_clouds(index, frame_gap, load_only_base=False):
-    """
+def load_point_cloud(index: int):
+    if index >= 100:
+        return None
 
-    :param index: Index of the current base point cloud
-    :param load_only_base: Index of the current base point cloud
-    :return: base and target point cloud data
-    """
-
-    source_index = index + frame_gap
-
-    if source_index >= 100:
-        if load_only_base:
-            return None
-        else:
-            return None, None
-
-    file_id_source = "00000000" + "{0:0=2d}".format(source_index)
-    file_id_target = "00000000" + "{0:0=2d}".format(index)
-
-    print(file_id_source)
-    # print(file_id_target)
-
-    # Read source
-    base_point_cloud = o3d.read_point_cloud("Data/data/" + file_id_source + ".pcd")
-    base_point_cloud_coords = np.asarray(base_point_cloud.points)
-    base_point_cloud_normal = np.genfromtxt("Data/data/" + file_id_source + "_normal.pcd", delimiter=' ',
-                                            skip_header=11)
-
-    if load_only_base:
-        return base_point_cloud, base_point_cloud_coords, base_point_cloud_normal
-
-    # Read target
-    target_point_cloud = o3d.read_point_cloud("Data/data/" + file_id_target + ".pcd")
-    target_point_cloud_coords = np.asarray(target_point_cloud.points)
-    target_point_cloud_normal = np.genfromtxt("Data/data/" + file_id_target + "_normal.pcd", delimiter=' ',
-                                              skip_header=11)
-
-    base = (base_point_cloud, base_point_cloud_coords, base_point_cloud_normal)
-    target = (target_point_cloud, target_point_cloud_coords, target_point_cloud_normal)
-
-    return base, target
+    file_id = "00000000" + "{0:0=2d}".format(index)
+    point_cloud = o3d.read_point_cloud("Data/data/" + file_id + ".pcd")
+    points = np.asarray(point_cloud.points)
+    normals = np.genfromtxt("Data/data/" + file_id + "_normal.pcd", delimiter=' ', skip_header=11)
+    return point_cloud, points, normals
 
 
 def reconstruct_3d(sample_size, sample_technique, frame_gap):
@@ -108,7 +74,7 @@ def reconstruct_3d(sample_size, sample_technique, frame_gap):
 
     # Small hack when the frame gap leads to the transformation being shorter than the total frames
     for i, j in enumerate(np.arange(0, 99, frame_gap)):
-        base = load_point_clouds(j, frame_gap, True)
+        base = load_point_cloud(j + frame_gap)
         if base is None:
             break
         base_point_cloud_coords, base_point_cloud_normal = base[1], base[2]
@@ -145,7 +111,8 @@ def run_experiments_ex_2():
     """
 
     # Get point clouds
-    base, target = load_point_clouds(0, 1)
+    base = load_point_cloud(0)
+    target = load_point_cloud(1)
     base_point_cloud_coords, base_point_cloud_normal = base[1], base[2]
     target_point_cloud_coords, target_point_cloud_normal = target[1], target[2]
     base_point_cloud_colors = np.asarray(base[0].colors)
@@ -238,7 +205,8 @@ def run_experiments_ex_3_2(sample_size, sample_technique):
     for i in np.arange(0, 99):
         if i == 0:
             # Get first base and target pair
-            base, target = load_point_clouds(i, 1)
+            base = load_point_cloud(i)
+            target = load_point_cloud(i+1)
             base_point_cloud_coords, base_point_cloud_normal = base[1], base[2]
             target_point_cloud_coords, target_point_cloud_normal = target[1], target[2]
             base_point_cloud_colors = np.asarray(base[0].colors)
@@ -247,7 +215,7 @@ def run_experiments_ex_3_2(sample_size, sample_technique):
                                             target_point_cloud_normal, base_point_cloud_colors,
                                             (sample_technique, sample_size))
         else:
-            base = load_point_clouds(i, 1, True)
+            base = load_point_cloud(i)
 
             if base is None:
                 break
@@ -283,12 +251,15 @@ def run_experiments_ex_3_2(sample_size, sample_technique):
 # base_point_cloud = scipy.io.loadmat('Data/source.mat')["source"].T
 # target_point_cloud = scipy.io.loadmat('Data/target.mat')["target"].T
 # R, t = IPC.calc_IPC(base_point_cloud, target_point_cloud)
-
-# base = load_point_clouds(20, True)
-
-
 # run_experiments_ex_2()
 # plot_resutls_ex_2()
-
 # run_experiments_ex_3_1()
-run_experiments_ex_3_2(5000, "uniform")
+# run_experiments_ex_3_2(5000, "uniform")
+
+
+def main():
+    pass
+
+
+if __name__ == '__main__':
+    main()
