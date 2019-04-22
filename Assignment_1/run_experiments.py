@@ -29,13 +29,14 @@ def load_point_cloud(index: int):
     return point_cloud, points, normals
 
 
-def estimate_transformations(sample_size, sample_technique, stride):
+def estimate_transformations(sample_size, sample_technique, stride=1, max_frame=99):
     """
     TODO: Augment function for all the experimental conditions
 
     :param sample_size:
     :param sample_technique:
     :param stride: The stride between frames
+    :param max_frame:
     :return:
     """
 
@@ -45,7 +46,7 @@ def estimate_transformations(sample_size, sample_technique, stride):
     rot = np.eye(3)
     trans = np.zeros(3)
 
-    for i in range(0, 99, stride):
+    for i in range(0, max_frame, stride):
         base = load_point_cloud(i + stride)
         if base is None:
             break
@@ -209,7 +210,7 @@ def run_experiments_ex_3_2(sample_size, sample_technique):
             target_point_cloud_coords, target_point_cloud_normal = target[1], target[2]
             base_point_cloud_colors = np.asarray(base[0].colors)
 
-            R, t, rms_errors = IPC.calc_ICP(base_point_cloud_coords, target_point_cloud_coords, base_point_cloud_normal,
+            R, t, rms_errors = calc_icp(base_point_cloud_coords, target_point_cloud_coords, base_point_cloud_normal,
                                             target_point_cloud_normal, base_point_cloud_colors,
                                             (sample_technique, sample_size))
         else:
@@ -221,7 +222,7 @@ def run_experiments_ex_3_2(sample_size, sample_technique):
             base_point_cloud_coords, base_point_cloud_normal = base[1], base[2]
             base_point_cloud_colors = np.asarray(base[0].colors)
 
-            R, t, rms_errors = IPC.calc_ICP(base_point_cloud_coords, accumulated_target_coords, base_point_cloud_normal,
+            R, t, rms_errors = calc_icp(base_point_cloud_coords, accumulated_target_coords, base_point_cloud_normal,
                                             accumulated_target_normals, base_point_cloud_colors,
                                             (sample_technique, sample_size))
 
@@ -245,11 +246,3 @@ def run_experiments_ex_3_2(sample_size, sample_technique):
     np.save(
         "Transformations/data_transformations_sample_" + str(sample_size) + "_" + sample_technique + "_fg1",
         transformations)
-
-
-def main():
-    pass
-
-
-if __name__ == '__main__':
-    main()
