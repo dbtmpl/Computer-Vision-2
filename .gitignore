@@ -2,4 +2,4 @@ Assignment_1/Data/data/
 .idea/
 *.xml
 __pycache__/
-*.txt
+.venv/

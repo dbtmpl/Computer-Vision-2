@@ -1,7 +1,6 @@
 import numpy as np
 import open3d as o3d
-import scipy.io
-import Assignment_1.calc_IPC as IPC
+from calc_IPC import calc_icp, clean_input
 import time
 import pickle
 import matplotlib.pyplot as plt
@@ -34,9 +33,8 @@ def estimate_transformations(sample_size, sample_technique, frame_gap):
 
         base_point_cloud_colors = np.asarray(base[0].colors)
 
-        R, t, rms_errors = IPC.calc_ICP(base_point_cloud_coords, target_point_cloud_coords, base_point_cloud_normal,
-                                        target_point_cloud_normal, base_point_cloud_colors,
-                                        (sample_technique, sample_size))
+        R, t, rms_errors = calc_icp(base_point_cloud_coords, target_point_cloud_coords, base_point_cloud_normal,
+                                    target_point_cloud_normal, base_point_cloud_colors, sample_technique, sample_size)
 
         # Calc and save as affine transformation
         rotation = R.dot(rotation)
@@ -114,7 +112,7 @@ def reconstruct_3d(sample_size, sample_technique, frame_gap):
         if base is None:
             break
         base_point_cloud_coords, base_point_cloud_normal = base[1], base[2]
-        A1, A1_normal = IPC.cleanInput(base_point_cloud_coords, base_point_cloud_normal)
+        A1, A1_normal = clean_input(base_point_cloud_coords, base_point_cloud_normal)
 
         if j > 0:
             trans = transformations[i - 1]
@@ -287,6 +285,7 @@ def run_experiments_ex_3_2(sample_size, sample_technique):
 # R, t = IPC.calc_IPC(base_point_cloud, target_point_cloud)
 
 # base = load_point_clouds(20, True)
+
 
 # run_experiments_ex_2()
 # plot_resutls_ex_2()
