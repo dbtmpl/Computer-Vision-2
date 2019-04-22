@@ -17,16 +17,17 @@ def estimate_transformations(sample_size, sample_technique, frame_gap):
     :return:
     """
 
-    start_time = time.time()
-
     # Keeps track of the transformations across consecutive frames. e.g entry 0: frame 0 to 1
     transformations = np.zeros((0, 4, 4))
 
     rotation = np.eye(3)
     translation = np.zeros(3)
 
-    for i in np.arange(0, 20, frame_gap):
+    for i in np.arange(0, 99, frame_gap):
         base, target = load_point_clouds(i, frame_gap)
+
+        if base is None:
+            break
 
         base_point_cloud_coords, base_point_cloud_normal = base[1], base[2]
         target_point_cloud_coords, target_point_cloud_normal = target[1], target[2]
@@ -44,9 +45,6 @@ def estimate_transformations(sample_size, sample_technique, frame_gap):
         transform_affine = np.append(transform, np.asarray([0, 0, 0, 1]).reshape((1, 4)), axis=0)
         transformations = np.append(transformations, transform_affine.reshape((1, 4, 4)), axis=0)
 
-    minutes_elapsed = int((time.time() - start_time) / 60)
-    print(minutes_elapsed)
-
     np.save("Transformations/data_transformations_sample_" + str(sample_size) + "_" + sample_technique + "_fg" + str(
         frame_gap), transformations)
 
@@ -58,7 +56,16 @@ def load_point_clouds(index, frame_gap, load_only_base=False):
     :param load_only_base: Index of the current base point cloud
     :return: base and target point cloud data
     """
-    file_id_source = "00000000" + "{0:0=2d}".format(index + frame_gap)
+
+    source_index = index + frame_gap
+
+    if source_index >= 100:
+        if load_only_base:
+            return None
+        else:
+            return None, None
+
+    file_id_source = "00000000" + "{0:0=2d}".format(source_index)
     file_id_target = "00000000" + "{0:0=2d}".format(index)
 
     print(file_id_source)
@@ -102,8 +109,10 @@ def reconstruct_3d(sample_size, sample_technique, frame_gap):
     reconstructed_data = np.zeros((0, 3))
 
     # Small hack when the frame gap leads to the transformation being shorter than the total frames
-    for i, j in enumerate(np.arange(0, 20, frame_gap)):
+    for i, j in enumerate(np.arange(0, 99, frame_gap)):
         base = load_point_clouds(j, frame_gap, True)
+        if base is None:
+            break
         base_point_cloud_coords, base_point_cloud_normal = base[1], base[2]
         A1, A1_normal = IPC.cleanInput(base_point_cloud_coords, base_point_cloud_normal)
 
@@ -144,10 +153,7 @@ def run_experiments_ex_2():
     base_point_cloud_colors = np.asarray(base[0].colors)
 
     # Set experiment parameters
-    sampling_techniques = ["rnd_i", "all", "uniform", "inf_reg"]
-    # sampling_techniques = ["all", "uniform", "rnd_i", "inf_reg"]
-    # sampling_techniques = ["uniform", "rnd_i", "inf_reg"]
-    # sampling_techniques = ["inf_reg"]
+    sampling_techniques = ["all", "uniform", "rnd_i", "inf_reg"]
     sample_size = 5000
 
     # Save Results
@@ -155,13 +161,6 @@ def run_experiments_ex_2():
 
     for i, samp_tech in enumerate(sampling_techniques):
         print("Current sampling", i)
-
-        # Save both total time as well as for each iteration ... Or not ...
-        # minutes_elapsed_total = [0, []]
-        # rms_errors_iter = []
-        # We go over 5 runs to get a better estimate over the time and convergence
-        # for j in range(3):
-        #     print("Current iter", j)
 
         start_time = time.time()
         R, t, rms_errors = IPC.calc_ICP(base_point_cloud_coords, target_point_cloud_coords, base_point_cloud_normal,
@@ -172,10 +171,7 @@ def run_experiments_ex_2():
 
         minutes_elapsed = (time.time() - start_time) / 60
 
-        # minutes_elapsed_total[0] += minutes_elapsed_iter
-        # minutes_elapsed_total[1].append(minutes_elapsed_iter)
         print("Minutes spent in this iteration.", minutes_elapsed)
-        # rms_errors_iter.append(rms_errors)
 
         # Save all the necessary Results
         results[i] = (rms_errors, minutes_elapsed)
@@ -213,31 +209,87 @@ def plot_resutls_ex_2():
 
     plt.legend(handles=[saved_plots[0][0], saved_plots[1][0], saved_plots[2][0], saved_plots[3][0]],
                labels=['All Data', 'Uniform', 'Random each Iteration', 'Informative Regions'], prop={'size': 15})
-    # plt.legend(handles=[saved_plots[0][0]], labels=['Informative Regions'], prop={'size': 15})
     plt.show()
 
 
-def run_experiments_ex_3():
+def run_experiments_ex_3_1(visualize=False):
     """
+    - 3.1 (a)
     - 3.1 (b) camera pose and merge the Results using every 2 nd , 4 th , and 10 th frames
-    - 3.2 ...
     :return:
     """
-    # TODO: Run experiments for exercise 3.X
+    for frame_gap in [1, 2, 4, 10]:
+        estimate_transformations(5000, "uniform", frame_gap)
 
-    pass
+    if visualize:
+        for frame_gap in [1, 2, 4, 10]:
+            reconstruct_3d(5000, "uniform", frame_gap)
 
+
+def run_experiments_ex_3_2(sample_size, sample_technique):
+    # Point cloud growing over consecutive frames
+    accumulated_target_coords = np.zeros((0, 3))
+    accumulated_target_normals = np.zeros((0, 4))
+
+    # Keeps track of the transformations across consecutive frames. e.g entry 0: frame 0 to 1
+    transformations = np.zeros((0, 4, 4))
+
+    rotation = np.eye(3)
+    translation = np.zeros(3)
+
+    for i in np.arange(0, 99):
+        if i == 0:
+            # Get first base and target pair
+            base, target = load_point_clouds(i, 1)
+            base_point_cloud_coords, base_point_cloud_normal = base[1], base[2]
+            target_point_cloud_coords, target_point_cloud_normal = target[1], target[2]
+            base_point_cloud_colors = np.asarray(base[0].colors)
+
+            R, t, rms_errors = IPC.calc_ICP(base_point_cloud_coords, target_point_cloud_coords, base_point_cloud_normal,
+                                            target_point_cloud_normal, base_point_cloud_colors,
+                                            (sample_technique, sample_size))
+        else:
+            base = load_point_clouds(i, 1, True)
+
+            if base is None:
+                break
+
+            base_point_cloud_coords, base_point_cloud_normal = base[1], base[2]
+            base_point_cloud_colors = np.asarray(base[0].colors)
+
+            R, t, rms_errors = IPC.calc_ICP(base_point_cloud_coords, accumulated_target_coords, base_point_cloud_normal,
+                                            accumulated_target_normals, base_point_cloud_colors,
+                                            (sample_technique, sample_size))
+
+        # Calc and save as affine transformation
+        rotation = R.dot(rotation)
+        translation = R.dot(translation) + t
+        transform = np.hstack((rotation, translation.reshape((3, 1))))
+        transform_affine = np.append(transform, np.asarray([0, 0, 0, 1]).reshape((1, 4)), axis=0)
+        transformations = np.append(transformations, transform_affine.reshape((1, 4, 4)), axis=0)
+
+        base_point_cloud_coords = np.hstack((base_point_cloud_coords, np.ones((base_point_cloud_coords.shape[0], 1))))
+        base_transformed = np.dot(base_point_cloud_coords, transform_affine.T)
+
+        accumulated_target_coords = np.append(accumulated_target_coords, base_transformed[:, 0:3], axis=0)
+        accumulated_target_normals = np.append(accumulated_target_normals, base_point_cloud_normal, axis=0)
+
+        if i == 0:
+            accumulated_target_coords = np.append(accumulated_target_coords, target_point_cloud_coords, axis=0)
+            accumulated_target_normals = np.append(accumulated_target_normals, target_point_cloud_normal, axis=0)
+
+    np.save(
+        "Transformations/data_transformations_sample_" + str(sample_size) + "_" + sample_technique + "_fg1",
+        transformations)
 
 # base_point_cloud = scipy.io.loadmat('Data/source.mat')["source"].T
 # target_point_cloud = scipy.io.loadmat('Data/target.mat')["target"].T
-
 # R, t = IPC.calc_IPC(base_point_cloud, target_point_cloud)
-
-
-estimate_transformations(5000, "uniform", 2)
-reconstruct_3d(5000, "uniform", 2)
 
 # base = load_point_clouds(20, True)
 
 # run_experiments_ex_2()
 # plot_resutls_ex_2()
+
+# run_experiments_ex_3_1()
+run_experiments_ex_3_2(5000, "uniform")

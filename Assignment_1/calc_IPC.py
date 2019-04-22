@@ -69,9 +69,6 @@ def calc_ICP(base_point_cloud, target_point_cloud, base_point_cloud_normal=None,
         # 2. Refine the rotation matrix R and translation vector t using using SVD
         R, t = compute_SVD(A1, matching_A2)
 
-        # Visualization - We do this before updating to visualize the initial setting
-        # visualize_source_and_target(A1, A2)
-
         # Updating the base point cloud
         A1 = np.dot(A1, R.T) + t
 
