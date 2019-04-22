@@ -3,6 +3,8 @@ import open3d as o3d
 import scipy.io
 import Assignment_1.calc_IPC as IPC
 import time
+import pickle
+import matplotlib.pyplot as plt
 
 
 def estimate_transformations(sample_size, sample_technique):
@@ -19,7 +21,7 @@ def estimate_transformations(sample_size, sample_technique):
     rotation = np.eye(3)
     translation = np.zeros(3)
 
-    for i in np.arange(1):
+    for i in np.arange(99):
         base, target = load_point_clouds(i)
 
         base_point_cloud_coords, base_point_cloud_normal = base[1], base[2]
@@ -27,18 +29,19 @@ def estimate_transformations(sample_size, sample_technique):
 
         base_point_cloud_colors = np.asarray(base[0].colors)
 
-        R, t = IPC.calc_ICP(base_point_cloud_coords, target_point_cloud_coords, base_point_cloud_normal,
-                            target_point_cloud_normal, base_point_cloud_colors, (sample_technique, sample_size))
+        R, t, rms_errors = IPC.calc_ICP(base_point_cloud_coords, target_point_cloud_coords, base_point_cloud_normal,
+                                        target_point_cloud_normal, base_point_cloud_colors,
+                                        (sample_technique, sample_size))
 
-        # Calc and save direct transformations - experiment
+        # Calc and save as affine transformation
         rotation = R.dot(rotation)
         translation = R.dot(translation) + t
         transform = np.hstack((rotation, translation.reshape((3, 1))))
         transform_affine = np.append(transform, np.asarray([0, 0, 0, 1]).reshape((1, 4)), axis=0)
         transformations = np.append(transformations, transform_affine.reshape((1, 4, 4)), axis=0)
 
-    end_time = time.time()
-    print("Time elapsed:", end_time - start_time)
+    minutes_elapsed = int((time.time() - start_time) / 60)
+    print(minutes_elapsed)
 
     np.save("Transformations/data_transformations_sample_" + str(sample_size) + "_" + sample_technique, transformations)
 
@@ -91,8 +94,6 @@ def reconstruct_3d(sample_size, sample_technique):
     reconstructed_data = np.zeros((0, 3))
 
     for i in np.arange(99):
-        # for i in np.arange(20)[::-1]:
-        # for i in np.concatenate((np.arange(30), np.arange(60, 100))):
         base = load_point_clouds(i, True)
         base_point_cloud_coords, base_point_cloud_normal = base[1], base[2]
         A1, A1_normal = IPC.cleanInput(base_point_cloud_coords, base_point_cloud_normal)
@@ -151,18 +152,93 @@ def run_experiments_ex_2():
     :return:
     """
 
-    # TODO: Run all experiments for exercise 2.1
+    # Get point clouds
+    base, target = load_point_clouds(0)
+    base_point_cloud_coords, base_point_cloud_normal = base[1], base[2]
+    target_point_cloud_coords, target_point_cloud_normal = target[1], target[2]
+    base_point_cloud_colors = np.asarray(base[0].colors)
 
-    pass
+    # Set experiment parameters
+    sampling_techniques = ["all", "uniform", "rnd_i", "inf_reg"]
+    # sampling_techniques = ["uniform", "rnd_i", "inf_reg"]
+    # sampling_techniques = ["inf_reg"]
+    sample_size = 5000
+
+    # Save Results
+    results = [[], [], [], []]
+
+    for i, samp_tech in enumerate(sampling_techniques):
+        print("Current sampling", i)
+
+        # Save both total time as well as for each iteration
+        minutes_elapsed_total = [0, []]
+        rms_errors_iter = []
+        # We go over 5 runs to get a better estimate over the time and convergence
+        for j in range(3):
+            print("Current iter", j)
+            start_time = time.time()
+            R, t, rms_errors = IPC.calc_ICP(base_point_cloud_coords, target_point_cloud_coords, base_point_cloud_normal,
+                                            target_point_cloud_normal, base_point_cloud_colors,
+                                            (samp_tech, sample_size))
+
+            # TODO: Implement stability and tolerance to noise
+
+            minutes_elapsed_iter = (time.time() - start_time) / 60
+            minutes_elapsed_total[0] += minutes_elapsed_iter
+            minutes_elapsed_total[1].append(minutes_elapsed_iter)
+            print("Time this iteration", minutes_elapsed_iter)
+
+            rms_errors_iter.append(rms_errors)
+
+        # Save all the necessary Results
+        results[i] = (rms_errors_iter, minutes_elapsed_total)
+
+    with open('Results/results_2_1.pkl', 'wb') as f:
+        pickle.dump(results, f)
+
+
+def plot_resutls_ex_2():
+    with open('Results/results_2_1.pkl', 'rb') as f:
+        results = pickle.load(f)
+
+    # sampling_techniques = ["all", "uniform", "rnd_i", "inf_reg"]
+    sampling_techniques = ["inf_reg"]
+
+    # plot the data
+    saved_plots = []
+
+    fig = plt.figure(figsize=(10, 6), dpi=80)
+    ax = fig.add_subplot(1, 1, 1)
+    ax.set_title("Root Mean Squared Error over Iterations", fontweight='bold', fontsize=18)
+    ax.set_xlabel('$Iteration$', fontsize=16)
+    ax.set_ylabel('$RMS-Error$', fontsize=16)
+
+    colors = ["r", "b", "m", "g"]
+
+    for i, samp_tech in enumerate(sampling_techniques):
+        result = results[i]
+        rms_errors, minutes_elapsed = result[0], result[1]
+        total_minutes_elapsed = minutes_elapsed[0]
+        print("Time elapsed " + samp_tech, total_minutes_elapsed)
+
+        # Since convergence is dynamic, hard to average over the iterations => for now get first rms
+        plot_i = ax.plot(rms_errors[0], color=colors[i])
+        saved_plots.append(plot_i)
+
+    # plt.legend(handles=[saved_plots[0][0], saved_plots[1][0], saved_plots[2][0], saved_plots[3][0]],
+    #            labels=['All Data', 'Uniform', 'Random each Iteration', 'Informative Regions'], prop={'size': 15})
+
+    plt.legend(handles=[saved_plots[0][0]], labels=['Informative Regions'], prop={'size': 15})
+    plt.show()
 
 
 def run_experiments_ex_3():
     """
-    - 3.1 (b) camera pose and merge the results using every 2 nd , 4 th , and 10 th frames
+    - 3.1 (b) camera pose and merge the Results using every 2 nd , 4 th , and 10 th frames
     - 3.2 ...
     :return:
     """
-    # TODO: Run experiments for excericise 3.X
+    # TODO: Run experiments for exercise 3.X
 
     pass
 
@@ -173,7 +249,10 @@ def run_experiments_ex_3():
 # R, t = IPC.calc_IPC(base_point_cloud, target_point_cloud)
 
 
-estimate_transformations(5000, "inf_reg")
-# reconstruct_3d(5000, "uniform")
+# estimate_transformations(5000, "inf_reg")
+# reconstruct_3d(5000, "inf_reg")
 
 # base = load_point_clouds(20, True)
+
+run_experiments_ex_2()
+# plot_resutls_ex_2()

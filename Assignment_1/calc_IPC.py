@@ -6,7 +6,7 @@ import cv2 as cv
 
 
 def calc_ICP(base_point_cloud, target_point_cloud, base_point_cloud_normal=None, target_point_cloud_normal=None,
-             base_point_cloud_colors=None, sampling=("All", "undf.")):
+             base_point_cloud_colors=None, sampling=("all", "undf.")):
     '''
     Performs the ICP algorithm ...
     :param base_point_cloud:
@@ -47,10 +47,12 @@ def calc_ICP(base_point_cloud, target_point_cloud, base_point_cloud_normal=None,
     final_R = np.identity(3)
     final_t = np.zeros(3)
 
+    rms_errors = []
+
     # dummy values for initialization
     current_rms, old_RMS = 0.0, 200.0
     # Iterate until RMS is unchanged
-    while not (np.isclose(current_rms, old_RMS, atol=0.000001)):
+    while not (np.isclose(current_rms, old_RMS, atol=0.0000001)):
         old_RMS = current_rms
         # 1. For each point in the base set (A1), find with brute force the best matching point in the target point set (A2)
         matching_A2 = get_matching_targets(A1, A2_all)
@@ -58,6 +60,7 @@ def calc_ICP(base_point_cloud, target_point_cloud, base_point_cloud_normal=None,
         # Calculate current error
         current_rms = calc_rms(A1, matching_A2)
         print("Current RMS", current_rms)
+        rms_errors.append(current_rms)
 
         # 2. Refine the rotation matrix R and translation vector t using using SVD
         R, t = compute_SVD(A1, matching_A2)
@@ -85,7 +88,7 @@ def calc_ICP(base_point_cloud, target_point_cloud, base_point_cloud_normal=None,
     # test_A1 = np.dot(A1_test, final_R.T) + final_t
     # visualize_source_and_target(test_A1, A2)
 
-    return final_R, final_t
+    return final_R, final_t, rms_errors
 
 
 def cleanInput(point_cloud, point_cloud_normal, point_cloud_colors=None):
@@ -209,7 +212,7 @@ def sub_sampling_informative_regions(point_cloud, point_cloud_normals, point_clo
             final_indices = np.append(final_indices, np.random.choice(eq_idx, k, replace=False))
 
     # If some bins are emtpy, or have less entries than ind_sample, we have to fill them up to reach the sample size
-    # For simplicity, we do this with uniform sampling.
+    # For simplicity, we do this with plain uniform sampling => the sample will be skewed from here anyway.
     res = sampling_size - final_indices.shape[0]
     if res > 0:
         add_inx = np.random.choice(
