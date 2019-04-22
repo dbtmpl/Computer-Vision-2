@@ -52,7 +52,8 @@ def calc_icp(base_points, target_points, base_normals=None, target_normals=None,
     index = NNDescent(target)
 
     # Iterate until RMS is unchanged
-    while not (np.isclose(errors[-2], errors[-1], atol=0.000001)):
+    # while not (np.isclose(errors[-2], errors[-1], atol=0.000001)):
+    while not errors[-2] == errors[-1]:
 
         # 1. For each point in the base set (A1):
         match_idx, _ = index.query(base, k=1)
@@ -60,7 +61,7 @@ def calc_icp(base_points, target_points, base_normals=None, target_normals=None,
 
         # Calculate current error
         errors.append(calc_rms(base, matches))
-        print('Step: {:5d} RMS: {}'.format(len(errors)-2, errors[-1]), end='\r')
+        print('Step: {:5d} RMS: {}'.format(len(errors) - 2, errors[-1]), end='\r')
 
         # 2. Refine the rotation matrix R and translation vector t using using SVD
         _r, _t = compute_svd(base, matches)
@@ -73,6 +74,7 @@ def calc_icp(base_points, target_points, base_normals=None, target_normals=None,
         trans = _r @ trans + _t
 
         if sampling_tech == "rnd_i":
+            base_all[indices] = base
             indices = np.random.choice(base_all.shape[0], sample_size, replace=False)
             base = base_all[indices]
 
@@ -80,9 +82,9 @@ def calc_icp(base_points, target_points, base_normals=None, target_normals=None,
     # visualize_base_and_target(base, tagret)
 
     # Test final transformation matrix
-    base_test, base_normal = clean_input(base, base_normals)
-    test_base = np.dot(base_test, rot.T) + trans
-    visualize_base_and_target(test_base, target)
+    # base_test, base_normal = clean_input(base, base_normals)
+    # test_base = np.dot(base_test, rot.T) + trans
+    # visualize_base_and_target(test_base, target)
 
     return rot, trans, errors[2:]
 

@@ -246,3 +246,6 @@ def run_experiments_ex_3_2(sample_size, sample_technique):
     np.save(
         "Transformations/data_transformations_sample_" + str(sample_size) + "_" + sample_technique + "_fg1",
         transformations)
+
+
+estimate_transformations(5000, "uniform")
