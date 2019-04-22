@@ -2,15 +2,19 @@ import numpy as np
 import open3d as o3d
 from calc_IPC import calc_icp, clean_input
 import time
+import pickle
+import matplotlib.pyplot as plt
 
 
-def estimate_transformations(sample_size, sample_technique):
+def estimate_transformations(sample_size, sample_technique, frame_gap):
     """
     TODO: Augment function for all the experimental conditions
+
+    :param sample_size:
+    :param sample_technique:
+    :param frame_gap: Parameter for implementing 3.1 (b)
     :return:
     """
-
-    start_time = time.time()
 
     # Keeps track of the transformations across consecutive frames. e.g entry 0: frame 0 to 1
     transformations = np.zeros((0, 4, 4))
@@ -18,38 +22,48 @@ def estimate_transformations(sample_size, sample_technique):
     rotation = np.eye(3)
     translation = np.zeros(3)
 
-    for i in np.arange(1):
-        base, target = load_point_clouds(i)
+    for i in np.arange(0, 99, frame_gap):
+        base, target = load_point_clouds(i, frame_gap)
+
+        if base is None:
+            break
 
         base_point_cloud_coords, base_point_cloud_normal = base[1], base[2]
         target_point_cloud_coords, target_point_cloud_normal = target[1], target[2]
 
         base_point_cloud_colors = np.asarray(base[0].colors)
 
-        R, t = calc_icp(base_point_cloud_coords, target_point_cloud_coords, base_point_cloud_normal,
-                        target_point_cloud_normal, base_point_cloud_colors, sample_technique, sample_size)
+        R, t, rms_errors = calc_icp(base_point_cloud_coords, target_point_cloud_coords, base_point_cloud_normal,
+                                    target_point_cloud_normal, base_point_cloud_colors, sample_technique, sample_size)
 
-        # Calc and save direct transformations - experiment
+        # Calc and save as affine transformation
         rotation = R.dot(rotation)
         translation = R.dot(translation) + t
         transform = np.hstack((rotation, translation.reshape((3, 1))))
         transform_affine = np.append(transform, np.asarray([0, 0, 0, 1]).reshape((1, 4)), axis=0)
         transformations = np.append(transformations, transform_affine.reshape((1, 4, 4)), axis=0)
 
-    end_time = time.time()
-    print("Time elapsed:", end_time - start_time)
-
-    np.save("Transformations/data_transformations_sample_" + str(sample_size) + "_" + sample_technique, transformations)
+    np.save("Transformations/data_transformations_sample_" + str(sample_size) + "_" + sample_technique + "_fg" + str(
+        frame_gap), transformations)
 
 
-def load_point_clouds(index, load_only_base=False):
+def load_point_clouds(index, frame_gap, load_only_base=False):
     """
 
     :param index: Index of the current base point cloud
     :param load_only_base: Index of the current base point cloud
     :return: base and target point cloud data
     """
-    file_id_source = "00000000" + "{0:0=2d}".format(index + 1)
+
+    source_index = index + frame_gap
+
+    if source_index >= 100:
+        if load_only_base:
+            return None
+        else:
+            return None, None
+
+    file_id_source = "00000000" + "{0:0=2d}".format(source_index)
     file_id_target = "00000000" + "{0:0=2d}".format(index)
 
     print(file_id_source)
@@ -76,27 +90,31 @@ def load_point_clouds(index, load_only_base=False):
     return base, target
 
 
-def reconstruct_3d(sample_size, sample_technique):
+def reconstruct_3d(sample_size, sample_technique, frame_gap):
     """
 
+    :param sample_size:
+    :param sample_technique:
+    :param frame_gap:
     :return:
     """
 
     transformations = np.load(
-        "Transformations/data_transformations_sample_" + str(sample_size) + "_" + sample_technique + ".npy")
-    # transformations = np.load("Transformations/data_transformations_sample_5000_uniform.npy")
+        "Transformations/data_transformations_sample_" + str(sample_size) + "_" + sample_technique + "_fg" + str(
+            frame_gap) + ".npy")
     print(transformations.shape)
 
     reconstructed_data = np.zeros((0, 3))
 
-    for i in np.arange(99):
-        # for i in np.arange(20)[::-1]:
-        # for i in np.concatenate((np.arange(30), np.arange(60, 100))):
-        base = load_point_clouds(i, True)
+    # Small hack when the frame gap leads to the transformation being shorter than the total frames
+    for i, j in enumerate(np.arange(0, 99, frame_gap)):
+        base = load_point_clouds(j, frame_gap, True)
+        if base is None:
+            break
         base_point_cloud_coords, base_point_cloud_normal = base[1], base[2]
         A1, A1_normal = clean_input(base_point_cloud_coords, base_point_cloud_normal)
 
-        if i > 0:
+        if j > 0:
             trans = transformations[i - 1]
 
             A1 = np.hstack((A1, np.ones((A1.shape[0], 1))))
@@ -105,30 +123,6 @@ def reconstruct_3d(sample_size, sample_technique):
         reconstructed_data = np.append(reconstructed_data, A1[:, 0:3], axis=0)
 
     visualize_reconstructed(reconstructed_data)
-
-
-# Test function for debugging. Alters transformations that they map on 99 and not on 0
-# Can most likely be deleted
-def rearange_transformation_order(transformations):
-    n = transformations.shape[0]
-
-    transformations_new = np.zeros((0, 3, 4))
-
-    for i in np.arange(100)[::-1]:
-        rotation = np.eye(3)
-        translation = np.zeros(3)
-        for j in np.arange(i, n):
-            trans = transformations[j]
-            R = trans[:, 0:3]
-            t = trans[:, 3]
-
-            rotation = R.dot(rotation)
-            translation = R.dot(translation) + t
-
-        trans_new = np.hstack((rotation, translation.reshape((3, 1))))
-        transformations_new = np.append(transformations_new, trans_new.reshape((1, 3, 4)), axis=0)
-
-    np.save("Transformations/transformations_rewind", np.flip(transformations_new, 0))
 
 
 def visualize_reconstructed(reconstructed):
@@ -150,29 +144,151 @@ def run_experiments_ex_2():
     :return:
     """
 
-    # TODO: Run all experiments for exercise 2.1
+    # Get point clouds
+    base, target = load_point_clouds(0, 1)
+    base_point_cloud_coords, base_point_cloud_normal = base[1], base[2]
+    target_point_cloud_coords, target_point_cloud_normal = target[1], target[2]
+    base_point_cloud_colors = np.asarray(base[0].colors)
 
-    pass
+    # Set experiment parameters
+    sampling_techniques = ["all", "uniform", "rnd_i", "inf_reg"]
+    sample_size = 5000
+
+    # Save Results
+    results = [[], [], [], []]
+
+    for i, samp_tech in enumerate(sampling_techniques):
+        print("Current sampling", i)
+
+        start_time = time.time()
+        R, t, rms_errors = IPC.calc_ICP(base_point_cloud_coords, target_point_cloud_coords, base_point_cloud_normal,
+                                        target_point_cloud_normal, base_point_cloud_colors,
+                                        (samp_tech, sample_size))
+
+        # TODO: Implement stability and tolerance to noise
+
+        minutes_elapsed = (time.time() - start_time) / 60
+
+        print("Minutes spent in this iteration.", minutes_elapsed)
+
+        # Save all the necessary Results
+        results[i] = (rms_errors, minutes_elapsed)
+
+    with open('Results/results_2_1.pkl', 'wb') as f:
+        pickle.dump(results, f)
 
 
-def run_experiments_ex_3():
+def plot_resutls_ex_2():
+    with open('Results/results_2_1.pkl', 'rb') as f:
+        results = pickle.load(f)
+
+    sampling_techniques = ["all", "uniform", "rnd_i", "inf_reg"]
+
+    # plot the data
+    saved_plots = []
+
+    fig = plt.figure(figsize=(10, 6), dpi=80)
+    ax = fig.add_subplot(1, 1, 1)
+    ax.set_title("Root Mean Squared Error over Iterations", fontweight='bold', fontsize=18)
+    ax.set_xlabel('$Iteration$', fontsize=16)
+    ax.set_ylabel('$RMS-Error$', fontsize=16)
+
+    colors = ["r", "b", "m", "g"]
+
+    for i, samp_tech in enumerate(sampling_techniques):
+        result = results[i]
+        rms_errors, minutes_elapsed = result[0], result[1]
+        total_minutes_elapsed = minutes_elapsed[0]
+        print("Time elapsed " + samp_tech, total_minutes_elapsed)
+
+        # Since convergence is dynamic, hard to average over the iterations => for now get first rms
+        plot_i = ax.plot(rms_errors[0], color=colors[i])
+        saved_plots.append(plot_i)
+
+    plt.legend(handles=[saved_plots[0][0], saved_plots[1][0], saved_plots[2][0], saved_plots[3][0]],
+               labels=['All Data', 'Uniform', 'Random each Iteration', 'Informative Regions'], prop={'size': 15})
+    plt.show()
+
+
+def run_experiments_ex_3_1(visualize=False):
     """
-    - 3.1 (b) camera pose and merge the results using every 2 nd , 4 th , and 10 th frames
-    - 3.2 ...
+    - 3.1 (a)
+    - 3.1 (b) camera pose and merge the Results using every 2 nd , 4 th , and 10 th frames
     :return:
     """
-    # TODO: Run experiments for excericise 3.X
+    for frame_gap in [1, 2, 4, 10]:
+        estimate_transformations(5000, "uniform", frame_gap)
 
-    pass
+    if visualize:
+        for frame_gap in [1, 2, 4, 10]:
+            reconstruct_3d(5000, "uniform", frame_gap)
 
+
+def run_experiments_ex_3_2(sample_size, sample_technique):
+    # Point cloud growing over consecutive frames
+    accumulated_target_coords = np.zeros((0, 3))
+    accumulated_target_normals = np.zeros((0, 4))
+
+    # Keeps track of the transformations across consecutive frames. e.g entry 0: frame 0 to 1
+    transformations = np.zeros((0, 4, 4))
+
+    rotation = np.eye(3)
+    translation = np.zeros(3)
+
+    for i in np.arange(0, 99):
+        if i == 0:
+            # Get first base and target pair
+            base, target = load_point_clouds(i, 1)
+            base_point_cloud_coords, base_point_cloud_normal = base[1], base[2]
+            target_point_cloud_coords, target_point_cloud_normal = target[1], target[2]
+            base_point_cloud_colors = np.asarray(base[0].colors)
+
+            R, t, rms_errors = IPC.calc_ICP(base_point_cloud_coords, target_point_cloud_coords, base_point_cloud_normal,
+                                            target_point_cloud_normal, base_point_cloud_colors,
+                                            (sample_technique, sample_size))
+        else:
+            base = load_point_clouds(i, 1, True)
+
+            if base is None:
+                break
+
+            base_point_cloud_coords, base_point_cloud_normal = base[1], base[2]
+            base_point_cloud_colors = np.asarray(base[0].colors)
+
+            R, t, rms_errors = IPC.calc_ICP(base_point_cloud_coords, accumulated_target_coords, base_point_cloud_normal,
+                                            accumulated_target_normals, base_point_cloud_colors,
+                                            (sample_technique, sample_size))
+
+        # Calc and save as affine transformation
+        rotation = R.dot(rotation)
+        translation = R.dot(translation) + t
+        transform = np.hstack((rotation, translation.reshape((3, 1))))
+        transform_affine = np.append(transform, np.asarray([0, 0, 0, 1]).reshape((1, 4)), axis=0)
+        transformations = np.append(transformations, transform_affine.reshape((1, 4, 4)), axis=0)
+
+        base_point_cloud_coords = np.hstack((base_point_cloud_coords, np.ones((base_point_cloud_coords.shape[0], 1))))
+        base_transformed = np.dot(base_point_cloud_coords, transform_affine.T)
+
+        accumulated_target_coords = np.append(accumulated_target_coords, base_transformed[:, 0:3], axis=0)
+        accumulated_target_normals = np.append(accumulated_target_normals, base_point_cloud_normal, axis=0)
+
+        if i == 0:
+            accumulated_target_coords = np.append(accumulated_target_coords, target_point_cloud_coords, axis=0)
+            accumulated_target_normals = np.append(accumulated_target_normals, target_point_cloud_normal, axis=0)
+
+    np.save(
+        "Transformations/data_transformations_sample_" + str(sample_size) + "_" + sample_technique + "_fg1",
+        transformations)
 
 # base_point_cloud = scipy.io.loadmat('Data/source.mat')["source"].T
 # target_point_cloud = scipy.io.loadmat('Data/target.mat')["target"].T
-
 # R, t = IPC.calc_IPC(base_point_cloud, target_point_cloud)
 
-
-#estimate_transformations(5000, "inf_reg")
-reconstruct_3d(5000, "uniform")
-
 # base = load_point_clouds(20, True)
+
+
+# run_experiments_ex_2()
+# plot_resutls_ex_2()
+
+# run_experiments_ex_3_1()
+run_experiments_ex_3_2(5000, "uniform")

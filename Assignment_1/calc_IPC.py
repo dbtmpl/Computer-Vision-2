@@ -44,6 +44,9 @@ def calc_icp(base_points, target_points, base_normals=None, target_normals=None,
 
     rot = np.identity(3)
     trans = np.zeros(3)
+    convergence_diff = 0.0000001
+    if sampling_tech == "rnd_i":
+        convergence_diff *= 1000
     # dummy values for initialization
     errors = [0.0, 200]
     index = NNDescent(target)
@@ -61,9 +64,6 @@ def calc_icp(base_points, target_points, base_normals=None, target_normals=None,
 
         # 2. Refine the rotation matrix R and translation vector t using using SVD
         _r, _t = compute_svd(base, matches)
-
-        # Visualization - We do this before updating to visualize the initial setting
-        # visualize_source_and_target(A1, A2)
 
         # Updating the base point cloud
         base = base @ _r.T + _t
@@ -84,7 +84,7 @@ def calc_icp(base_points, target_points, base_normals=None, target_normals=None,
     test_base = np.dot(base_test, rot.T) + trans
     visualize_base_and_target(test_base, target)
 
-    return rot, trans
+    return rot, trans, errors
 
 
 def clean_input(points, normals, colors=None):
@@ -193,7 +193,7 @@ def sub_sampling_informative_regions(points, normals, colors, sampling_size):
             final_indices = np.append(final_indices, np.random.choice(eq_idx, k, replace=False))
 
     # If some bins are emtpy, or have less entries than ind_sample, we have to fill them up to reach the sample size
-    # For simplicity, we do this with uniform sampling.
+    # For simplicity, we do this with plain uniform sampling => the sample will be skewed from here anyway.
     res = sampling_size - final_indices.shape[0]
     if res > 0:
         add_inx = np.random.choice(
