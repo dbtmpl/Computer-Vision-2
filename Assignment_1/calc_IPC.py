@@ -29,7 +29,7 @@ def calc_icp(base_points, target_points, base_normals=None, target_normals=None,
         # Subsampling from informative regions
         elif sampling_tech == "inf_reg":
             indices = sub_sampling_informative_regions(base_all, base_normals_all, base_colors, sample_size)
-        # Just take em all, no samlping
+        # Just take em all, no sampling
         else:
             indices = range(0, len(base_all))
 
@@ -52,7 +52,7 @@ def calc_icp(base_points, target_points, base_normals=None, target_normals=None,
     index = NNDescent(target)
 
     # Iterate until RMS is unchanged
-    # while not (np.isclose(errors[-2], errors[-1], atol=0.000001)):
+    # while not (np.isclose(errors[-2], errors[-1], atol=convergence_diff)):
     while not errors[-2] == errors[-1]:
 
         # 1. For each point in the base set (A1):
@@ -85,6 +85,8 @@ def calc_icp(base_points, target_points, base_normals=None, target_normals=None,
     # base_test, base_normal = clean_input(base, base_normals)
     # test_base = np.dot(base_test, rot.T) + trans
     # visualize_base_and_target(test_base, target)
+    #
+    # visualize_base_and_target(base_all, target)
 
     return rot, trans, errors[2:]
 
@@ -98,12 +100,13 @@ def clean_input(points, normals, colors=None):
     :param colors: The colors of the base points
     :return: cleaned point cloud and normals
     """
+
     # Keep indices where row not Nan
     el_not_nan = ~np.isnan(points)
     rows_not_nan = np.logical_or(el_not_nan[:, 0], el_not_nan[:, 1], el_not_nan[:, 2])
 
     # points shallow enough to survice (depth < 1)
-    shallow_rows = points[:, 2] < 1
+    shallow_rows = points[:, 2] < 1.0
     rows_to_keep = np.logical_and(rows_not_nan, shallow_rows)
 
     clean_points = points[rows_to_keep, :]

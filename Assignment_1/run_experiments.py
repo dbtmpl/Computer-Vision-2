@@ -69,7 +69,7 @@ def estimate_transformations(sample_size, sample_technique, stride=1, max_frame=
         str(sample_size), sample_technique, str(stride)), transformations)
 
 
-def reconstruct_3d(sample_size, sample_technique, stride):
+def reconstruct_3d(sample_size, sample_technique, stride=1):
     """
 
     :param sample_size:
@@ -205,14 +205,14 @@ def run_experiments_ex_3_2(sample_size, sample_technique):
         if i == 0:
             # Get first base and target pair
             base = load_point_cloud(i)
-            target = load_point_cloud(i+1)
+            target = load_point_cloud(i + 1)
             base_point_cloud_coords, base_point_cloud_normal = base[1], base[2]
             target_point_cloud_coords, target_point_cloud_normal = target[1], target[2]
             base_point_cloud_colors = np.asarray(base[0].colors)
 
             R, t, rms_errors = calc_icp(base_point_cloud_coords, target_point_cloud_coords, base_point_cloud_normal,
-                                            target_point_cloud_normal, base_point_cloud_colors,
-                                            (sample_technique, sample_size))
+                                        target_point_cloud_normal, base_point_cloud_colors,
+                                        (sample_technique, sample_size))
         else:
             base = load_point_cloud(i)
 
@@ -223,8 +223,8 @@ def run_experiments_ex_3_2(sample_size, sample_technique):
             base_point_cloud_colors = np.asarray(base[0].colors)
 
             R, t, rms_errors = calc_icp(base_point_cloud_coords, accumulated_target_coords, base_point_cloud_normal,
-                                            accumulated_target_normals, base_point_cloud_colors,
-                                            (sample_technique, sample_size))
+                                        accumulated_target_normals, base_point_cloud_colors,
+                                        (sample_technique, sample_size))
 
         # Calc and save as affine transformation
         rotation = R.dot(rotation)
@@ -246,6 +246,3 @@ def run_experiments_ex_3_2(sample_size, sample_technique):
     np.save(
         "Transformations/data_transformations_sample_" + str(sample_size) + "_" + sample_technique + "_fg1",
         transformations)
-
-
-estimate_transformations(5000, "uniform")
