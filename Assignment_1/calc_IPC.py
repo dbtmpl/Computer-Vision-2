@@ -35,7 +35,7 @@ def calc_icp(base_points, target_points, base_normals=None, target_normals=None,
 
         base = base_all[indices]
         base_normals = base_normals_all[indices]
-        print('#Samples ⇒ Base: {}, Target: {}'.format(base.size, target.size))
+        print('#Samples ⇒ Base: {}, Target: {}'.format(base.shape[0], target.shape[0]))
 
     # If no normals are specified => dummy data is loaded
     else:
@@ -84,7 +84,7 @@ def calc_icp(base_points, target_points, base_normals=None, target_normals=None,
     test_base = np.dot(base_test, rot.T) + trans
     visualize_base_and_target(test_base, target)
 
-    return rot, trans, errors
+    return rot, trans, errors[2:]
 
 
 def clean_input(points, normals, colors=None):
