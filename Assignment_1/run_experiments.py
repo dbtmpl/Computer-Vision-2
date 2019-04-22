@@ -6,6 +6,28 @@ import pickle
 import matplotlib.pyplot as plt
 
 
+def visualize_points(points):
+    """
+
+    :param points:
+    :return:
+    """
+    cloud = o3d.PointCloud()
+    cloud.points = o3d.Vector3dVector(points)
+    o3d.draw_geometries([cloud])
+
+
+def load_point_cloud(index: int):
+    if index >= 100:
+        return None
+
+    file_id = "00000000" + "{0:0=2d}".format(index)
+    point_cloud = o3d.read_point_cloud("Data/data/" + file_id + ".pcd")
+    points = np.asarray(point_cloud.points)
+    normals = np.genfromtxt("Data/data/" + file_id + "_normal.pcd", delimiter=' ', skip_header=11)
+    return point_cloud, points, normals
+
+
 def estimate_transformations(sample_size, sample_technique, stride):
     """
     TODO: Augment function for all the experimental conditions
@@ -45,61 +67,36 @@ def estimate_transformations(sample_size, sample_technique, stride):
         str(sample_size), sample_technique, str(stride)), transformations)
 
 
-def load_point_cloud(index: int):
-    if index >= 100:
-        return None
-
-    file_id = "00000000" + "{0:0=2d}".format(index)
-    point_cloud = o3d.read_point_cloud("Data/data/" + file_id + ".pcd")
-    points = np.asarray(point_cloud.points)
-    normals = np.genfromtxt("Data/data/" + file_id + "_normal.pcd", delimiter=' ', skip_header=11)
-    return point_cloud, points, normals
-
-
-def reconstruct_3d(sample_size, sample_technique, frame_gap):
+def reconstruct_3d(sample_size, sample_technique, stride):
     """
 
     :param sample_size:
     :param sample_technique:
-    :param frame_gap:
+    :param stride:
     :return:
     """
 
-    transformations = np.load(
-        "Transformations/data_transformations_sample_" + str(sample_size) + "_" + sample_technique + "_fg" + str(
-            frame_gap) + ".npy")
-    print(transformations.shape)
+    transformations = np.load("Transformations/data_transformations_sample_{}_{}_fg{}.npy".format(
+        str(sample_size), sample_technique, stride))
 
-    reconstructed_data = np.zeros((0, 3))
+    reconstructed_points = np.zeros((0, 3))
 
     # Small hack when the frame gap leads to the transformation being shorter than the total frames
-    for i, j in enumerate(np.arange(0, 99, frame_gap)):
-        base = load_point_cloud(j + frame_gap)
+    for i, j in enumerate(range(0, 99, stride)):
+        base = load_point_cloud(j + stride)
         if base is None:
             break
-        base_point_cloud_coords, base_point_cloud_normal = base[1], base[2]
-        A1, A1_normal = clean_input(base_point_cloud_coords, base_point_cloud_normal)
+        points, normals = clean_input(base[1], base[2])
 
         if j > 0:
             trans = transformations[i - 1]
 
-            A1 = np.hstack((A1, np.ones((A1.shape[0], 1))))
-            A1 = np.dot(A1, trans.T)
+            points = np.hstack((points, np.ones((points.shape[0], 1))))
+            points = points @ trans.T
 
-        reconstructed_data = np.append(reconstructed_data, A1[:, 0:3], axis=0)
+        reconstructed_points = np.append(reconstructed_points, points[:, 0:3], axis=0)
 
-    visualize_reconstructed(reconstructed_data)
-
-
-def visualize_reconstructed(reconstructed):
-    """
-
-    :param reconstructed:
-    :return:
-    """
-    point_cloud_rec = o3d.PointCloud()
-    point_cloud_rec.points = o3d.Vector3dVector(reconstructed)
-    o3d.draw_geometries([point_cloud_rec])
+    visualize_points(reconstructed_points)
 
 
 def run_experiments_ex_2():
