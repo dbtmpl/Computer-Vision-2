@@ -25,7 +25,7 @@ def estimate_transformations(sample_size, sample_technique, frame_gap):
     rotation = np.eye(3)
     translation = np.zeros(3)
 
-    for i in np.arange(0, 99, frame_gap):
+    for i in np.arange(0, 20, frame_gap):
         base, target = load_point_clouds(i, frame_gap)
 
         base_point_cloud_coords, base_point_cloud_normal = base[1], base[2]
@@ -47,7 +47,8 @@ def estimate_transformations(sample_size, sample_technique, frame_gap):
     minutes_elapsed = int((time.time() - start_time) / 60)
     print(minutes_elapsed)
 
-    np.save("Transformations/data_transformations_sample_" + str(sample_size) + "_" + sample_technique, transformations)
+    np.save("Transformations/data_transformations_sample_" + str(sample_size) + "_" + sample_technique + "_fg" + str(
+        frame_gap), transformations)
 
 
 def load_point_clouds(index, frame_gap, load_only_base=False):
@@ -61,7 +62,7 @@ def load_point_clouds(index, frame_gap, load_only_base=False):
     file_id_target = "00000000" + "{0:0=2d}".format(index)
 
     print(file_id_source)
-    print(file_id_target)
+    # print(file_id_target)
 
     # Read source
     base_point_cloud = o3d.read_point_cloud("Data/data/" + file_id_source + ".pcd")
@@ -94,18 +95,19 @@ def reconstruct_3d(sample_size, sample_technique, frame_gap):
     """
 
     transformations = np.load(
-        "Transformations/data_transformations_sample_" + str(sample_size) + "_" + sample_technique + ".npy")
+        "Transformations/data_transformations_sample_" + str(sample_size) + "_" + sample_technique + "_fg" + str(
+            frame_gap) + ".npy")
     print(transformations.shape)
 
     reconstructed_data = np.zeros((0, 3))
 
-    for i in np.arange(0, 99, frame_gap):
-
-        base = load_point_clouds(i, frame_gap, True)
+    # Small hack when the frame gap leads to the transformation being shorter than the total frames
+    for i, j in enumerate(np.arange(0, 20, frame_gap)):
+        base = load_point_clouds(j, frame_gap, True)
         base_point_cloud_coords, base_point_cloud_normal = base[1], base[2]
         A1, A1_normal = IPC.cleanInput(base_point_cloud_coords, base_point_cloud_normal)
 
-        if i > 0:
+        if j > 0:
             trans = transformations[i - 1]
 
             A1 = np.hstack((A1, np.ones((A1.shape[0], 1))))
@@ -232,10 +234,10 @@ def run_experiments_ex_3():
 # R, t = IPC.calc_IPC(base_point_cloud, target_point_cloud)
 
 
-# estimate_transformations(5000, "inf_reg")
-# reconstruct_3d(5000, "inf_reg")
+estimate_transformations(5000, "uniform", 2)
+reconstruct_3d(5000, "uniform", 2)
 
 # base = load_point_clouds(20, True)
 
-run_experiments_ex_2()
+# run_experiments_ex_2()
 # plot_resutls_ex_2()
