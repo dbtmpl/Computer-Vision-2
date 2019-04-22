@@ -49,10 +49,14 @@ def calc_ICP(base_point_cloud, target_point_cloud, base_point_cloud_normal=None,
 
     rms_errors = []
 
+    convergence_diff = 0.0000001
+    if sampling_tech == "rnd_i":
+        convergence_diff *= 1000
+
     # dummy values for initialization
     current_rms, old_RMS = 0.0, 200.0
     # Iterate until RMS is unchanged
-    while not (np.isclose(current_rms, old_RMS, atol=0.0000001)):
+    while not (np.isclose(current_rms, old_RMS, atol=convergence_diff)):
         old_RMS = current_rms
         # 1. For each point in the base set (A1), find with brute force the best matching point in the target point set (A2)
         matching_A2 = get_matching_targets(A1, A2_all)
@@ -76,6 +80,7 @@ def calc_ICP(base_point_cloud, target_point_cloud, base_point_cloud_normal=None,
         final_t = R.dot(final_t) + t
 
         if sampling_tech == "rnd_i":
+            A1_all[indices] = A1
             indices = np.random.choice(A1_all.shape[0], sample_size, replace=False)
             A1 = A1_all[indices]
             # A1_normal = A1_normal_all[indices]
