@@ -4,6 +4,7 @@ from calc_IPC import calc_icp, clean_input
 import time
 import pickle
 import matplotlib.pyplot as plt
+from argparse import ArgumentParser
 
 
 def visualize_points(points):
@@ -44,7 +45,7 @@ def estimate_transformations(sample_size, sample_technique, stride):
     rot = np.eye(3)
     trans = np.zeros(3)
 
-    for i in range(0, 1, stride):
+    for i in range(0, 99, stride):
         base = load_point_cloud(i + stride)
         if base is None:
             break
@@ -244,14 +245,6 @@ def run_experiments_ex_3_2(sample_size, sample_technique):
     np.save(
         "Transformations/data_transformations_sample_" + str(sample_size) + "_" + sample_technique + "_fg1",
         transformations)
-
-# base_point_cloud = scipy.io.loadmat('Data/source.mat')["source"].T
-# target_point_cloud = scipy.io.loadmat('Data/target.mat')["target"].T
-# R, t = IPC.calc_IPC(base_point_cloud, target_point_cloud)
-# run_experiments_ex_2()
-# plot_resutls_ex_2()
-# run_experiments_ex_3_1()
-# run_experiments_ex_3_2(5000, "uniform")
 
 
 def main():
