@@ -172,7 +172,7 @@ def run_experiments_ex_3():
 # R, t = IPC.calc_IPC(base_point_cloud, target_point_cloud)
 
 
-estimate_transformations(5000, "inf_reg")
-# reconstruct_3d(5000, "uniform")
+#estimate_transformations(5000, "inf_reg")
+reconstruct_3d(5000, "uniform")
 
 # base = load_point_clouds(20, True)

@@ -13,8 +13,8 @@ def calc_icp(base_points, target_points, base_normals=None, target_normals=None,
     :param base_normals: normals of the base point cloud
     :param target_normals: normals of the target point cloud
     :param base_colors: Colors of the base point cloud
-    :param sampling_tech: Sampling technique as string: 'all', 'uniform', 'rnd_i' (random sub-sampling in each iteration)
-            and 'inf_reg' (sub-sampling more from informative regions)
+    :param sampling_tech: Sampling technique as string: 'all', 'uniform',
+        'rnd_i' (random sub-sampling in each iteration) and 'inf_reg' (sub-sampling more from informative regions)
     :param sample_size: Sample size as int
     :return:
     """
@@ -31,7 +31,7 @@ def calc_icp(base_points, target_points, base_normals=None, target_normals=None,
             indices = sub_sampling_informative_regions(base_all, base_normals_all, base_colors, sample_size)
         # Just take em all, no samlping
         else:
-            indices = range(0, len(base))
+            indices = range(0, len(base_all))
 
         base = base_all[indices]
         base_normals = base_normals_all[indices]
@@ -53,7 +53,7 @@ def calc_icp(base_points, target_points, base_normals=None, target_normals=None,
 
         # 1. For each point in the base set (A1):
         match_idx, _ = index.query(base, k=1)
-        matches = target[match_idx.flatten(),:]
+        matches = target[match_idx.flatten(), :]
 
         # Calculate current error
         errors.append(calc_rms(base, matches))
