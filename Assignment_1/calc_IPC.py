@@ -82,16 +82,6 @@ def calc_icp(base_points, target_points, base_normals=None, target_normals=None,
             base = base_all[indices]
     print()
 
-    # Final Visualization
-    # visualize_base_and_target(base, tagret)
-
-    # Test final transformation matrix
-    # base_test, base_normal = clean_input(base, base_normals)
-    # test_base = np.dot(base_test, rot.T) + trans
-    # visualize_base_and_target(test_base, target)
-    #
-    # visualize_base_and_target(base_all, target)
-
     return rot, trans, errors[2:]
 
 
@@ -154,18 +144,6 @@ def compute_svd(base, target):
     return R, t
 
 
-def visualize_base_and_target(base, target):
-    """
-    :param base: Base point cloud
-    :param target: Target point cloud
-    :return: Shows both point cloud in one plot
-    """
-    base_cloud, target_cloud = o3d.PointCloud(), o3d.PointCloud()
-    base_cloud.points = o3d.Vector3dVector(base)
-    target_cloud.points = o3d.Vector3dVector(target)
-    o3d.draw_geometries([base_cloud, target_cloud])
-
-
 def sub_sampling_informative_regions(points, normals, colors, sampling_size):
     """
     Using SIFT descriptors and Normal-Space Sampling to get a more informative sample of points
@@ -209,3 +187,102 @@ def sub_sampling_informative_regions(points, normals, colors, sampling_size):
         final_indices = np.append(final_indices, add_inx)
 
     return final_indices
+
+
+def visualize_points(points):
+    """
+
+    :param points:
+    :return:
+    """
+    cloud = o3d.PointCloud()
+    cloud.points = o3d.Vector3dVector(points)
+    o3d.draw_geometries([cloud])
+
+
+def load_point_cloud(index: int):
+    if index >= 100:
+        return None
+
+    file_id = "00000000" + "{0:0=2d}".format(index)
+    point_cloud = o3d.read_point_cloud("Data/data/" + file_id + ".pcd")
+    points = np.asarray(point_cloud.points)
+    normals = np.genfromtxt("Data/data/" + file_id + "_normal.pcd", delimiter=' ', skip_header=11)
+    return point_cloud, points, normals
+
+
+def estimate_transformations(sample_size, sample_technique, stride=1, max_frame=99):
+    """
+    :param sample_size:
+    :param sample_technique:
+    :param stride: The stride between frames
+    :param max_frame:
+    :return:
+    """
+
+    # Keeps track of the transformations across consecutive frames. e.g entry 0: frame 0 to 1
+    transformations = np.zeros((0, 4, 4))
+
+    rot = np.eye(3)
+    trans = np.zeros(3)
+
+    plot_errors = []
+
+    for i in range(0, max_frame, stride):
+        base = load_point_cloud(i + stride)
+        if base is None:
+            break
+        base_cloud, base_points, base_normals = base
+        target_cloud, target_points, target_normals = load_point_cloud(i)
+        base_colors = np.asarray(base_cloud.colors)
+
+        _rot, _trans, errors = calc_icp(base_points, target_points, base_normals, target_normals, base_colors,
+                                        sample_technique, sample_size)
+
+        # Update overall transformations:
+        rot = _rot @ rot
+        trans = _rot @ trans + _trans
+
+        plot_errors.append(errors[-1])
+
+        transform = np.hstack((rot, trans.reshape((3, 1))))
+        transform_affine = np.append(transform, np.asarray([0, 0, 0, 1]).reshape((1, 4)), axis=0)
+        transformations = np.append(transformations, transform_affine.reshape((1, 4, 4)), axis=0)
+
+    np.save("Transformations/data_transformations_sample_{}_{}_fg{}".format(
+        str(sample_size), sample_technique, str(stride)), transformations)
+
+    np.save("Transformations/rms_error_sample_{}_{}_fg{}".format(
+        str(sample_size), sample_technique, str(stride)), np.asarray(plot_errors))
+
+
+def reconstruct_3d(sample_size, sample_technique, stride=1):
+    """
+
+    :param sample_size:
+    :param sample_technique:
+    :param stride:
+    :return:
+    """
+
+    transformations = np.load("Transformations/data_transformations_sample_{}_{}_fg{}.npy".format(
+        str(sample_size), sample_technique, stride))
+
+    reconstructed_points = np.zeros((0, 3))
+
+    # Small hack when the frame gap leads to the transformation being shorter than the total frames
+    for i, j in enumerate(range(0, 99, stride)):
+        base = load_point_cloud(j + stride)
+        if base is None:
+            break
+        points, normals = clean_input(base[1], base[2])
+
+        if j > 0:
+            trans = transformations[i - 1]
+
+            points = np.hstack((points, np.ones((points.shape[0], 1))))
+            points = points @ trans.T
+
+        reconstructed_points = np.append(reconstructed_points, points[:, 0:3], axis=0)
+
+    visualize_points(reconstructed_points)
