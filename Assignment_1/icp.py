@@ -32,7 +32,7 @@ def calc_icp(base_points, target_points, base_normals=None, target_normals=None,
             indices = np.random.choice(base_all.shape[0], sample_size, replace=False)
         # Subsampling from informative regions
         elif sampling_tech == "inf_reg":
-            indices = sub_sampling_informative_regions(base_all, base_normals_all, base_colors, sample_size)
+            indices = sub_sampling_informative_regions(base_normals_all, sample_size, base_colors)
         # Just take em all, no sampling
         else:
             indices = range(0, len(base_all))
@@ -63,12 +63,13 @@ def calc_icp(base_points, target_points, base_normals=None, target_normals=None,
         match_idx, _ = index.query(base, k=1)
         matches = target[match_idx.flatten(), :]
 
+        dist_sel = np.sqrt(((base - matches)**2).sum(axis=1)) < 0.01
         # Calculate current error
-        errors.append(calc_rms(base, matches))
+        errors.append(calc_rms(base[dist_sel], matches[dist_sel]))
         print('\tStep: {:5d} RMS: {}'.format(len(errors) - 2, errors[-1]), end='\r')
 
         # 2. Refine the rotation matrix R and translation vector t using using SVD
-        _r, _t = compute_svd(base, matches)
+        _r, _t = compute_svd(base[dist_sel], matches[dist_sel])
 
         # Updating the base point cloud
         base = base @ _r.T + _t
@@ -146,33 +147,44 @@ def compute_svd(base, target):
     return R, t
 
 
-def sub_sampling_informative_regions(points, normals, colors, sampling_size):
-    """
-    Using SIFT descriptors and Normal-Space Sampling to get a more informative sample of points
-
-    :param points:
-    :param normals:
-    :param colors:
-    :return:
-    """
-
-    # TODO: Decide SIFT reasonable? Might be a pain reconstructing image as x, y coordinates in point_cloud are relative
-
-    # sift = cv.xfeatures2d.SIFT_create()
-    # kp = sift.detect(gray, None)
-
+def normal_sampling(normals, sampling_size):
     reference_vec = np.asarray([0, 0, 1])
-
     consine_similarities = []
-    # spatial.distance.cosine apparently not broadcastable... :(
     for normal_vec in normals:
         consine_similarities.append(1 - spatial.distance.cosine(normal_vec[0:3], reference_vec))
-
     # Divide cosine similarities to reference vector in bins
     bins = np.arange(-1, 1, 0.1)
     inds = np.digitize(np.asarray(consine_similarities), bins)
-    ind_sample = int(sampling_size / bins.shape[0])
 
+    return bin_sampling(sampling_size, bins, inds, normals.shape[0])
+
+
+def hue_sampling(colors, sampling_size):
+    def hue_from_rgb(rgb):
+        maxs = rgb.argmax(axis=1)
+        mins = rgb.argmin(axis=1)
+        hue = np.zeros(rgb.shape[0])
+        indr = maxs == 0
+        hue[indr] = (rgb[indr, 1] - rgb[indr, 2]) / (maxs[indr] - mins[indr])
+        indg = maxs == 1
+        hue[indg] = 2.0 + (rgb[indg, 2] - rgb[indg, 0]) / (maxs[indg] - mins[indg])
+        indb = maxs == 2
+        hue[indb] = 4.0 + (rgb[indb, 0] - rgb[indb, 1]) / (maxs[indb] - mins[indb])
+        ind = maxs == mins
+        hue[ind] = 0
+        hue *= 60
+        hue[hue < 0] += 360
+        return hue
+
+    hues = hue_from_rgb(colors)
+    bins = np.arange(0, 360, 20)
+    inds = np.digitize(np.asarray(hues), bins)
+
+    return bin_sampling(sampling_size, bins, inds, colors.shape[0])
+
+
+def bin_sampling(sampling_size, bins, inds, n_points):
+    ind_sample = int(sampling_size / bins.shape[0])
     final_indices = np.zeros(0, dtype="int32")
     for _bin in np.arange(bins.shape[0]):
         eq_idx = np.argwhere(inds == _bin).flatten()
@@ -185,10 +197,15 @@ def sub_sampling_informative_regions(points, normals, colors, sampling_size):
     res = sampling_size - final_indices.shape[0]
     if res > 0:
         add_inx = np.random.choice(
-            np.argwhere(~np.isin(np.arange(normals.shape[0]), final_indices)).flatten(), res, replace=False)
+            np.argwhere(~np.isin(np.arange(n_points), final_indices)).flatten(), res, replace=False)
         final_indices = np.append(final_indices, add_inx)
-
     return final_indices
+
+
+def sub_sampling_informative_regions(normals, sampling_size, colors):
+    normal_samples = normal_sampling(normals, int(sampling_size/2))
+    hue_samples = hue_sampling(colors, int(sampling_size/2))
+    return np.hstack((normal_samples, hue_samples))
 
 
 def visualize_points(points):
@@ -225,8 +242,8 @@ def estimate_transformations(sample_size, sample_technique, stride=1, max_frame=
     # Keeps track of the transformations across consecutive frames. e.g entry 0: frame 0 to 1
     transformations = np.zeros((0, 4, 4))
 
-    rot = np.eye(3)
-    trans = np.zeros(3)
+    # rot = np.eye(3)
+    # trans = np.zeros(3)
 
     plot_errors = []
 
@@ -242,12 +259,12 @@ def estimate_transformations(sample_size, sample_technique, stride=1, max_frame=
                                         sample_technique, sample_size)
 
         # Update overall transformations:
-        rot = _rot @ rot
-        trans = _rot @ trans + _trans
+        # rot = _rot @ rot
+        # trans = _rot @ trans + _trans
 
         plot_errors.append(errors[-1])
 
-        transform = np.hstack((rot, trans.reshape((3, 1))))
+        transform = np.hstack((_rot, _trans.reshape((3, 1))))
         transform_affine = np.append(transform, np.asarray([0, 0, 0, 1]).reshape((1, 4)), axis=0)
         transformations = np.append(transformations, transform_affine.reshape((1, 4, 4)), axis=0)
 
@@ -271,24 +288,20 @@ def reconstruct_3d(sample_size, sample_technique, stride=1, max_frame=99):
     transformations = np.load("Transformations/data_transformations_sample_{}_{}_fg{}.npy".format(
         str(sample_size), sample_technique, stride))
 
-    reconstructed_points = np.zeros((0, 3))
-
+    reconstruction = np.zeros((0, 3))
     # Small hack when the frame gap leads to the transformation being shorter than the total frames
     for i, j in enumerate(range(0, max_frame, stride)):
-        base = load_point_cloud(j + stride)
-        if base is None:
+        cloud = load_point_cloud(j + stride)
+        if cloud is None:
             break
-        points, normals = clean_input(base[1], base[2])
+        new_points, _ = clean_input(cloud[1], cloud[2])
 
         if j > 0:
             trans = transformations[i - 1]
+            reconstruction = (reconstruction - trans[:3, 3]) @ trans[:3, :3]
+        reconstruction = np.vstack((reconstruction, new_points[:, :3]))
 
-            points = np.hstack((points, np.ones((points.shape[0], 1))))
-            points = points @ trans.T
-
-        reconstructed_points = np.append(reconstructed_points, points[:, 0:3], axis=0)
-
-    visualize_points(reconstructed_points)
+    visualize_points(reconstruction)
 
 
 if __name__ == '__main__':
