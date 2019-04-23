@@ -2,6 +2,7 @@ from scipy import spatial
 import numpy as np
 import open3d as o3d
 from pynndescent import NNDescent
+from argparse import ArgumentParser
 
 
 def calc_icp(base_points, target_points, base_normals=None, target_normals=None, base_colors=None,
@@ -286,3 +287,19 @@ def reconstruct_3d(sample_size, sample_technique, stride=1):
         reconstructed_points = np.append(reconstructed_points, points[:, 0:3], axis=0)
 
     visualize_points(reconstructed_points)
+
+
+if __name__ == '__main__':
+    parser = ArgumentParser()
+    parser.add_argument('--sample_size', type=int, default=5000)
+    parser.add_argument('--technique', type=str, default='inf_reg')
+    parser.add_argument('--stride', type=int, default=1)
+    parser.add_argument('--estimate', action='store_true')
+    parser.add_argument('--reconstruct', action='store_true')
+    parser.add_argument('--max_frame', type=int, default=99)
+    args = parser.parse_args()
+
+    if args.estimate:
+        estimate_transformations(args.sample_size, args.technique, args.stride, args.max_frame)
+    if args.reconstruct:
+        reconstruct_3d(args.sample_size, args.technique, args.stride)
