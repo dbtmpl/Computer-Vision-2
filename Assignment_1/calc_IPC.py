@@ -32,7 +32,7 @@ def calc_icp(base_points, target_points, base_normals=None, target_normals=None,
         # Subsampling from informative regions
         elif sampling_tech == "inf_reg":
             indices = sub_sampling_informative_regions(base_all, base_normals_all, base_colors, sample_size)
-        # Just take em all, no samlping
+        # Just take em all, no sampling
         else:
             indices = range(0, len(base_all))
 
@@ -58,7 +58,6 @@ def calc_icp(base_points, target_points, base_normals=None, target_normals=None,
     # Iterate until RMS is unchanged
     # while not (np.isclose(errors[-2], errors[-1], atol=0.000001)):
     while not np.isclose(errors[-2], errors[-1], atol=10e-4):
-
         # 1. For each point in the base set (A1):
         match_idx, _ = index.query(base, k=1)
         matches = target[match_idx.flatten(), :]
@@ -90,6 +89,8 @@ def calc_icp(base_points, target_points, base_normals=None, target_normals=None,
     # base_test, base_normal = clean_input(base, base_normals)
     # test_base = np.dot(base_test, rot.T) + trans
     # visualize_base_and_target(test_base, target)
+    #
+    # visualize_base_and_target(base_all, target)
 
     return rot, trans, errors[2:]
 

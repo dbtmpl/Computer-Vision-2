@@ -31,8 +31,6 @@ def load_point_cloud(index: int):
 
 def estimate_transformations(sample_size, sample_technique, stride=1, max_frame=99):
     """
-    TODO: Augment function for all the experimental conditions
-
     :param sample_size:
     :param sample_technique:
     :param stride: The stride between frames
@@ -45,6 +43,8 @@ def estimate_transformations(sample_size, sample_technique, stride=1, max_frame=
 
     rot = np.eye(3)
     trans = np.zeros(3)
+
+    plot_errors = []
 
     for i in range(0, max_frame, stride):
         base = load_point_cloud(i + stride)
@@ -61,6 +61,8 @@ def estimate_transformations(sample_size, sample_technique, stride=1, max_frame=
         rot = _rot @ rot
         trans = _rot @ trans + _trans
 
+        plot_errors.append(errors[-1])
+
         transform = np.hstack((rot, trans.reshape((3, 1))))
         transform_affine = np.append(transform, np.asarray([0, 0, 0, 1]).reshape((1, 4)), axis=0)
         transformations = np.append(transformations, transform_affine.reshape((1, 4, 4)), axis=0)
@@ -68,8 +70,11 @@ def estimate_transformations(sample_size, sample_technique, stride=1, max_frame=
     np.save("Transformations/data_transformations_sample_{}_{}_fg{}".format(
         str(sample_size), sample_technique, str(stride)), transformations)
 
+    np.save("Transformations/rms_error_sample_{}_{}_fg{}".format(
+        str(sample_size), sample_technique, str(stride)), np.asarray(plot_errors))
 
-def reconstruct_3d(sample_size, sample_technique, stride):
+
+def reconstruct_3d(sample_size, sample_technique, stride=1):
     """
 
     :param sample_size:
@@ -205,14 +210,14 @@ def run_experiments_ex_3_2(sample_size, sample_technique):
         if i == 0:
             # Get first base and target pair
             base = load_point_cloud(i)
-            target = load_point_cloud(i+1)
+            target = load_point_cloud(i + 1)
             base_point_cloud_coords, base_point_cloud_normal = base[1], base[2]
             target_point_cloud_coords, target_point_cloud_normal = target[1], target[2]
             base_point_cloud_colors = np.asarray(base[0].colors)
 
             R, t, rms_errors = calc_icp(base_point_cloud_coords, target_point_cloud_coords, base_point_cloud_normal,
-                                            target_point_cloud_normal, base_point_cloud_colors,
-                                            (sample_technique, sample_size))
+                                        target_point_cloud_normal, base_point_cloud_colors,
+                                        sample_technique, sample_size)
         else:
             base = load_point_cloud(i)
 
@@ -223,8 +228,8 @@ def run_experiments_ex_3_2(sample_size, sample_technique):
             base_point_cloud_colors = np.asarray(base[0].colors)
 
             R, t, rms_errors = calc_icp(base_point_cloud_coords, accumulated_target_coords, base_point_cloud_normal,
-                                            accumulated_target_normals, base_point_cloud_colors,
-                                            (sample_technique, sample_size))
+                                        accumulated_target_normals, base_point_cloud_colors,
+                                        (sample_technique, sample_size))
 
         # Calc and save as affine transformation
         rotation = R.dot(rotation)
@@ -244,8 +249,14 @@ def run_experiments_ex_3_2(sample_size, sample_technique):
             accumulated_target_normals = np.append(accumulated_target_normals, target_point_cloud_normal, axis=0)
 
     np.save(
-        "Transformations/data_transformations_sample_" + str(sample_size) + "_" + sample_technique + "_fg1",
+        "Transformations/data_transformations_3_2_sample_" + str(sample_size) + "_" + sample_technique + "_fg1",
         transformations)
 
 
-estimate_transformations(5000, "uniform")
+# run_experiments_ex_3_1()
+# run_experiments_ex_3_2(5000, "uniform")
+
+# reconstruct_3d(5000, "uniform", 1)
+# reconstruct_3d(5000, "uniform", 1)
+
+estimate_transformations(5000, "uniform", 1)
