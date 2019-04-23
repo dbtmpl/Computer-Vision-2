@@ -58,7 +58,7 @@ def calc_icp(base_points, target_points, base_normals=None, target_normals=None,
 
     # Iterate until RMS is unchanged
     # while not (np.isclose(errors[-2], errors[-1], atol=0.000001)):
-    while not np.isclose(errors[-2], errors[-1], atol=10e-4):
+    while not np.isclose(errors[-2], errors[-1], atol=10e-5):
         # 1. For each point in the base set (A1):
         match_idx, _ = index.query(base, k=1)
         matches = target[match_idx.flatten(), :]
@@ -100,7 +100,8 @@ def clean_input(points, normals, colors=None):
     rows_not_nan = np.logical_or(el_not_nan[:, 0], el_not_nan[:, 1], el_not_nan[:, 2])
 
     # remove outliers in z-direction
-    zinliers = (points[:, 2] - points[:, 2].mean())/points[:, 2].std() < 1
+    # zinliers = ((points[:, 2] - points[:, 2].mean())/points[:, 2].std()) < 0.1
+    zinliers = points[:, 2] < 1
     rows_to_keep = np.logical_and(rows_not_nan, zinliers)
 
     clean_points = points[rows_to_keep, :]
@@ -257,12 +258,13 @@ def estimate_transformations(sample_size, sample_technique, stride=1, max_frame=
         str(sample_size), sample_technique, str(stride)), np.asarray(plot_errors))
 
 
-def reconstruct_3d(sample_size, sample_technique, stride=1):
+def reconstruct_3d(sample_size, sample_technique, stride=1, max_frame=99):
     """
 
     :param sample_size:
     :param sample_technique:
     :param stride:
+    :param max_frame:
     :return:
     """
 
@@ -272,7 +274,7 @@ def reconstruct_3d(sample_size, sample_technique, stride=1):
     reconstructed_points = np.zeros((0, 3))
 
     # Small hack when the frame gap leads to the transformation being shorter than the total frames
-    for i, j in enumerate(range(0, 99, stride)):
+    for i, j in enumerate(range(0, max_frame, stride)):
         base = load_point_cloud(j + stride)
         if base is None:
             break
@@ -302,4 +304,4 @@ if __name__ == '__main__':
     if args.estimate:
         estimate_transformations(args.sample_size, args.technique, args.stride, args.max_frame)
     if args.reconstruct:
-        reconstruct_3d(args.sample_size, args.technique, args.stride)
+        reconstruct_3d(args.sample_size, args.technique, args.stride, args.max_frame)
