@@ -97,8 +97,9 @@ def clean_input(points, normals, colors=None):
     :return: cleaned point cloud and normals
     """
     # Keep indices where row not Nan
-    el_not_nan = ~np.isnan(points)
-    rows_not_nan = np.logical_or(el_not_nan[:, 0], el_not_nan[:, 1], el_not_nan[:, 2])
+    el_not_nan = ~np.isnan(normals)
+    print(el_not_nan.shape)
+    rows_not_nan = np.logical_and(el_not_nan[:, 0], el_not_nan[:, 1], el_not_nan[:, 2])
 
     # remove outliers in z-direction
     # zinliers = ((points[:, 2] - points[:, 2].mean())/points[:, 2].std()) < 0.1

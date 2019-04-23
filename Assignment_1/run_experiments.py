@@ -73,10 +73,10 @@ def run_experiments_ex_3_2(sample_size, sample_technique):
             accumulated_target_normals = np.append(accumulated_target_normals, target_point_cloud_normal, axis=0)
 
         current_acc_length = accumulated_target_coords.shape[0]
-        if current_acc_length > 500000:
+        if current_acc_length > 400000:
             exclude_indices = np.arange(0, int(current_acc_length * 0.2), 2)
-            np.delete(accumulated_target_coords, exclude_indices)
-            np.delete(accumulated_target_normals, exclude_indices)
+            accumulated_target_coords = np.delete(accumulated_target_coords, exclude_indices, 0)
+            accumulated_target_normals = np.delete(accumulated_target_normals, exclude_indices, 0)
 
         np.save(
             "Transformations/data_transformations_3_2_sample_" + str(sample_size) + "_" + sample_technique + "_fg1",
@@ -103,9 +103,8 @@ def plot_final_rmses():
     # plt.plot(rms_32)
     # plt.show()
 
-
-# run_experiments_ex_3_1()
-run_experiments_ex_3_2(5000, "uniform")
+run_experiments_ex_3_1()
+# run_experiments_ex_3_2(5000, "uniform")
 
 # reconstruct_3d(5000, "uniform", 10)
 
