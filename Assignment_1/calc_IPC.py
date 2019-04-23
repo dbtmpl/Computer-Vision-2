@@ -20,7 +20,10 @@ def calc_icp(base_points, target_points, base_normals=None, target_normals=None,
     """
 
     if base_normals is not None:
-        base_all, base_normals_all, base_colors = clean_input(base_points, base_normals, base_colors)
+        if base_colors is not None:
+            base_all, base_normals_all, base_colors = clean_input(base_points, base_normals, base_colors)
+        else:
+            base_all, base_normals_all = clean_input(base_points, base_normals)
         target, target_normals = clean_input(target_points, target_normals)
 
         # Random subsampling
@@ -35,7 +38,8 @@ def calc_icp(base_points, target_points, base_normals=None, target_normals=None,
 
         base = base_all[indices]
         base_normals = base_normals_all[indices]
-        print('#Samples ⇒ Base: {}, Target: {}'.format(base.shape[0], target.shape[0]))
+        print('[calc_icp] Sampling={}, #Sample={}, #Base={}, #Target={}'.format(
+            sampling_tech, sample_size, base.shape[0], target.shape[0]))
 
     # If no normals are specified => dummy data is loaded
     else:
@@ -53,7 +57,7 @@ def calc_icp(base_points, target_points, base_normals=None, target_normals=None,
 
     # Iterate until RMS is unchanged
     # while not (np.isclose(errors[-2], errors[-1], atol=0.000001)):
-    while not errors[-2] == errors[-1]:
+    while not np.isclose(errors[-2], errors[-1], atol=10e-4):
 
         # 1. For each point in the base set (A1):
         match_idx, _ = index.query(base, k=1)
@@ -61,7 +65,7 @@ def calc_icp(base_points, target_points, base_normals=None, target_normals=None,
 
         # Calculate current error
         errors.append(calc_rms(base, matches))
-        print('Step: {:5d} RMS: {}'.format(len(errors) - 2, errors[-1]), end='\r')
+        print('\tStep: {:5d} RMS: {}'.format(len(errors) - 2, errors[-1]), end='\r')
 
         # 2. Refine the rotation matrix R and translation vector t using using SVD
         _r, _t = compute_svd(base, matches)
@@ -77,6 +81,7 @@ def calc_icp(base_points, target_points, base_normals=None, target_normals=None,
             base_all[indices] = base
             indices = np.random.choice(base_all.shape[0], sample_size, replace=False)
             base = base_all[indices]
+    print()
 
     # Final Visualization
     # visualize_base_and_target(base, tagret)
@@ -102,9 +107,9 @@ def clean_input(points, normals, colors=None):
     el_not_nan = ~np.isnan(points)
     rows_not_nan = np.logical_or(el_not_nan[:, 0], el_not_nan[:, 1], el_not_nan[:, 2])
 
-    # points shallow enough to survice (depth < 1)
-    shallow_rows = points[:, 2] < 1
-    rows_to_keep = np.logical_and(rows_not_nan, shallow_rows)
+    # remove outliers in z-direction
+    zinliers = (points[:, 2] - points[:, 2].mean())/points[:, 2].std() < 1
+    rows_to_keep = np.logical_and(rows_not_nan, zinliers)
 
     clean_points = points[rows_to_keep, :]
     clean_normals = normals[rows_to_keep, :]
