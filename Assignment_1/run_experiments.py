@@ -59,11 +59,11 @@ def run_experiments_ex_3_2(sample_size, sample_technique):
         plot_errors.append(errors[-1])
 
         transform = np.hstack((_rot, _trans.reshape((3, 1))))
-        transform_affine = np.append(transform, np.asarray([0, 0, 0, 1]).reshape((1, 4)), axis=0)
-        transformations = np.append(transformations, transform_affine.reshape((1, 4, 4)), axis=0)
+        transform_rigid = np.append(transform, np.asarray([0, 0, 0, 1]).reshape((1, 4)), axis=0)
+        transformations = np.append(transformations, transform_rigid.reshape((1, 4, 4)), axis=0)
 
         base_point_cloud_coords = np.hstack((base_point_cloud_coords, np.ones((base_point_cloud_coords.shape[0], 1))))
-        base_transformed = np.dot(base_point_cloud_coords, transform_affine.T)
+        base_transformed = np.dot(base_point_cloud_coords, transform_rigid.T)
 
         accumulated_target_coords = np.append(accumulated_target_coords, base_transformed[:, 0:3], axis=0)
         accumulated_target_normals = np.append(accumulated_target_normals, base_point_cloud_normal, axis=0)
@@ -94,7 +94,7 @@ def plot_final_rmses():
             str(5000), "uniform", stride))
         x = stride * np.arange(rms.size)
         plt.plot(x, rms)
-        plt.savefig("Plots/rms_error_sample_{}_{}_fg{}.png".format(str(5000), "uniform", stride))
+        # plt.savefig("Plots/rms_error_sample_{}_{}_fg{}.png".format(str(5000), "uniform", stride))
         plt.show()
 
     # for 3.2
@@ -103,9 +103,10 @@ def plot_final_rmses():
     # plt.plot(rms_32)
     # plt.show()
 
-run_experiments_ex_3_1()
+
+# run_experiments_ex_3_1()
 # run_experiments_ex_3_2(5000, "uniform")
 
-# reconstruct_3d(5000, "uniform", 10)
+reconstruct_3d(5000, "uniform", 4)
 
 # plot_final_rmses()
