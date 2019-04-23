@@ -291,7 +291,7 @@ def reconstruct_3d(sample_size, sample_technique, stride=1, max_frame=99):
     reconstruction = np.zeros((0, 3))
     # Small hack when the frame gap leads to the transformation being shorter than the total frames
     for i, j in enumerate(range(0, max_frame, stride)):
-        cloud = load_point_cloud(j + stride)
+        cloud = load_point_cloud(j)
         if cloud is None:
             break
         new_points, _ = clean_input(cloud[1], cloud[2])
@@ -300,7 +300,7 @@ def reconstruct_3d(sample_size, sample_technique, stride=1, max_frame=99):
             trans = transformations[i - 1]
             reconstruction = (reconstruction - trans[:3, 3]) @ trans[:3, :3]
         reconstruction = np.vstack((reconstruction, new_points[:, :3]))
-
+    
     visualize_points(reconstruction)
 
 
