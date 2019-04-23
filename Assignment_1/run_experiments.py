@@ -1,5 +1,5 @@
 import numpy as np
-from calc_IPC import calc_icp, estimate_transformations, reconstruct_3d, load_point_cloud
+from icp import calc_icp, estimate_transformations, reconstruct_3d, load_point_cloud
 
 
 def run_experiments_ex_3_1(visualize=False):

@@ -1,5 +1,5 @@
 #!/bin/python
-from run_experiments import calc_icp, load_point_cloud
+from icp import calc_icp, load_point_cloud
 from itertools import product
 import numpy as np
 import pandas as pd
