@@ -73,7 +73,7 @@ def calc_icp(base_points, target_points, base_normals=None, target_normals=None,
             _, match_idx = tree.query(base)
         matches = target[match_idx.flatten(), :]
 
-        dist_sel = np.sqrt(((base - matches)**2).sum(axis=1)) < 0.01
+        dist_sel = np.sqrt(((base - matches) ** 2).sum(axis=1)) < 0.01
         # Calculate current error
         errors.append(calc_rms(base[dist_sel], matches[dist_sel]))
         print('\tStep: {:5d} RMS: {}'.format(len(errors) - 2, errors[-1]), end='\r')
@@ -107,8 +107,8 @@ def clean_input(points, normals, colors=None):
     :return: cleaned point cloud and normals
     """
     # Keep indices where row not Nan
-    el_not_nan = ~np.isnan(points)
-    rows_not_nan = np.logical_or(el_not_nan[:, 0], el_not_nan[:, 1], el_not_nan[:, 2])
+    el_not_nan = ~np.isnan(normals)
+    rows_not_nan = np.logical_and(el_not_nan[:, 0], el_not_nan[:, 1], el_not_nan[:, 2])
 
     # remove outliers in z-direction
     # zinliers = ((points[:, 2] - points[:, 2].mean())/points[:, 2].std()) < 0.1
@@ -213,8 +213,8 @@ def bin_sampling(sampling_size, bins, inds, n_points):
 
 
 def sub_sampling_informative_regions(normals, sampling_size, colors):
-    normal_samples = normal_sampling(normals, int(sampling_size/2))
-    hue_samples = hue_sampling(colors, int(sampling_size/2))
+    normal_samples = normal_sampling(normals, int(sampling_size / 2))
+    hue_samples = hue_sampling(colors, int(sampling_size / 2))
     return np.hstack((normal_samples, hue_samples))
 
 
@@ -275,8 +275,8 @@ def estimate_transformations(sample_size, sample_technique, stride=1, max_frame=
         plot_errors.append(errors[-1])
 
         transform = np.hstack((_rot, _trans.reshape((3, 1))))
-        transform_affine = np.append(transform, np.asarray([0, 0, 0, 1]).reshape((1, 4)), axis=0)
-        transformations = np.append(transformations, transform_affine.reshape((1, 4, 4)), axis=0)
+        transform_rigid = np.append(transform, np.asarray([0, 0, 0, 1]).reshape((1, 4)), axis=0)
+        transformations = np.append(transformations, transform_rigid.reshape((1, 4, 4)), axis=0)
 
     np.save("Transformations/data_transformations_sample_{}_{}_fg{}".format(
         str(sample_size), sample_technique, str(stride)), transformations)
@@ -295,7 +295,7 @@ def reconstruct_3d(sample_size, sample_technique, stride=1, max_frame=99):
     :return:
     """
 
-    transformations = np.load("Transformations/data_transformations_sample_{}_{}_fg{}.npy".format(
+    transformations = np.load("Last_results/data_transformations_sample_{}_{}_fg{}.npy".format(
         str(sample_size), sample_technique, stride))
 
     reconstruction = np.zeros((0, 3))
@@ -310,7 +310,7 @@ def reconstruct_3d(sample_size, sample_technique, stride=1, max_frame=99):
             trans = transformations[i - 1]
             reconstruction = (reconstruction - trans[:3, 3]) @ trans[:3, :3]
         reconstruction = np.vstack((reconstruction, new_points[:, :3]))
-    
+
     visualize_points(reconstruction)
 
 
