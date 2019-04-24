@@ -6,7 +6,7 @@ from argparse import ArgumentParser
 
 
 def calc_icp(base_points, target_points, base_normals=None, target_normals=None, base_colors=None,
-             sampling_tech="All", sample_size=None):
+             sampling_tech="All", sample_size=None, tree_method='pynndescent'):
     """
     Performs the ICP algorithm ...
     :param base_points: point cloud to be aligned
@@ -17,8 +17,10 @@ def calc_icp(base_points, target_points, base_normals=None, target_normals=None,
     :param sampling_tech: Sampling technique as string: 'all', 'uniform',
         'rnd_i' (random sub-sampling in each iteration) and 'inf_reg' (sub-sampling more from informative regions)
     :param sample_size: Sample size as int
+    :param tree_method
     :return:
     """
+    assert(tree_method in ['kdtree', 'ckdtree', 'pynndescent'])
 
     if base_normals is not None:
         if base_colors is not None:
@@ -54,13 +56,21 @@ def calc_icp(base_points, target_points, base_normals=None, target_normals=None,
         convergence_diff *= 1000
     # dummy values for initialization
     errors = [0.0, 200]
-    index = NNDescent(target)
+    if tree_method == 'pynndescent':
+        index = NNDescent(target)
+    elif tree_method == 'ckdtree':
+        tree = spatial.cKDTree(target)
+    else:
+        tree = spatial.KDTree(target)
 
     # Iterate until RMS is unchanged
     # while not (np.isclose(errors[-2], errors[-1], atol=0.000001)):
     while not np.isclose(errors[-2], errors[-1], atol=10e-5):
         # 1. For each point in the base set (A1):
-        match_idx, _ = index.query(base, k=1)
+        if tree_method == 'pynndescent':
+            match_idx, _ = index.query(base, k=1)
+        else:
+            _, match_idx = tree.query(base)
         matches = target[match_idx.flatten(), :]
 
         dist_sel = np.sqrt(((base - matches)**2).sum(axis=1)) < 0.01
