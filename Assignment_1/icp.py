@@ -295,7 +295,7 @@ def reconstruct_3d(sample_size, sample_technique, stride=1, max_frame=99):
     :return:
     """
 
-    transformations = np.load("Last_results/data_transformations_sample_{}_{}_fg{}.npy".format(
+    transformations = np.load("Transformations/data_transformations_sample_{}_{}_fg{}.npy".format(
         str(sample_size), sample_technique, stride))
 
     reconstruction = np.zeros((0, 3))
