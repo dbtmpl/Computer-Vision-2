@@ -28,45 +28,29 @@ def run_experiments_ex_3_2(sample_size, sample_technique):
     plot_errors = []
 
     for i in np.arange(0, 99):
-        if i == 0:
-            # Get first base and target pair
-            base = load_point_cloud(i + 1)
-            target = load_point_cloud(i)
-            base_point_cloud_coords, base_point_cloud_normal = base[1], base[2]
-            target_point_cloud_coords, target_point_cloud_normal = target[1], target[2]
-            base_point_cloud_colors = np.asarray(base[0].colors)
+        base = load_point_cloud(i)
 
-            _rot, _trans, errors = calc_icp(base_point_cloud_coords, target_point_cloud_coords, base_point_cloud_normal,
-                                            target_point_cloud_normal, base_point_cloud_colors,
-                                            sample_technique, sample_size)
+        if base is None:
+            break
 
-        else:
-            base = load_point_cloud(i + 1)
+        base_point_cloud_coords, base_point_cloud_normal = base[1], base[2]
+        base_point_cloud_colors = np.asarray(base[0].colors)
 
-            if base is None:
-                break
-
-            base_point_cloud_coords, base_point_cloud_normal = base[1], base[2]
-            base_point_cloud_colors = np.asarray(base[0].colors)
-
+        if i > 0:
             _rot, _trans, errors = calc_icp(base_point_cloud_coords, accumulated_target_coords, base_point_cloud_normal,
                                             accumulated_target_normals, base_point_cloud_colors, sample_technique,
                                             sample_size)
 
-        plot_errors.append(errors[-1])
+            plot_errors.append(errors[-1])
 
-        transform = np.hstack((_rot, _trans.reshape((3, 1))))
-        transform_rigid = np.append(transform, np.asarray([0, 0, 0, 1]).reshape((1, 4)), axis=0)
-        transformations = np.append(transformations, transform_rigid.reshape((1, 4, 4)), axis=0)
+            transform = np.hstack((_rot, _trans.reshape((3, 1))))
+            transform_rigid = np.append(transform, np.asarray([0, 0, 0, 1]).reshape((1, 4)), axis=0)
+            transformations = np.append(transformations, transform_rigid.reshape((1, 4, 4)), axis=0)
 
-        base_transformed = (base_point_cloud_coords - transform_rigid[:3, 3]) @ transform_rigid[:3, :3]
+            accumulated_target_coords = (accumulated_target_coords - transform_rigid[:3, 3]) @ transform_rigid[:3, :3]
 
-        accumulated_target_coords = np.append(accumulated_target_coords, base_transformed[:, 0:3], axis=0)
+        accumulated_target_coords = np.append(accumulated_target_coords, base_point_cloud_coords[:, 0:3], axis=0)
         accumulated_target_normals = np.append(accumulated_target_normals, base_point_cloud_normal, axis=0)
-
-        if i == 0:
-            accumulated_target_coords = np.append(accumulated_target_coords, target_point_cloud_coords, axis=0)
-            accumulated_target_normals = np.append(accumulated_target_normals, target_point_cloud_normal, axis=0)
 
         current_acc_length = accumulated_target_coords.shape[0]
         if current_acc_length > 200000:
@@ -75,19 +59,19 @@ def run_experiments_ex_3_2(sample_size, sample_technique):
             accumulated_target_normals = np.delete(accumulated_target_normals, exclude_indices, 0)
 
         np.save(
-            "Transformations/data_transformations_3_2_sample_" + str(sample_size) + "_" + sample_technique + "_fg1",
-            transformations)
+            "Transformations/data_transformations_3_2_sample_" + str(
+                sample_size) + "_" + sample_technique + "_fg1_test", transformations)
 
         np.save("Transformations/rms_error_3_2_sample_{}_{}_fg{}".format(str(sample_size), sample_technique, str(1)),
                 np.asarray(plot_errors))
 
 
 def reconstruct_3_2():
-    transformations = np.load("Transformations/data_transformations_3_2_sample_4000_uniform_fg1.npy")
+    transformations = np.load("Transformations/data_transformations_3_2_sample_4000_uniform_fg1_test.npy")
 
     reconstruction = np.zeros((0, 3))
     # Small hack when the frame gap leads to the transformation being shorter than the total frames
-    for i, j in enumerate(range(0, 25, 1)):
+    for i, j in enumerate(range(0, 29, 1)):
         cloud = load_point_cloud(j)
         if cloud is None:
             break
@@ -150,4 +134,4 @@ def plot_final_rmses(ex_3_2=False):
 
 # reconstruct_3d(5000, "uniform", 4)
 
-plot_final_rmses(True)
+# plot_final_rmses(True)
