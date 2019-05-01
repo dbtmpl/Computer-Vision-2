@@ -40,9 +40,9 @@ def Ransac(N, matches, keypoints_1, keypoints_2, t, good_enough, model_estimator
     best_model = None
     best_fit = 0
     if model_estimator == "baseline_homography":
-        sample_size = 8  # Need 8 unknowns to solve for fundamental matrix. More will only introduce more outliers
+        sample_size = 4  # Need 8 unknowns to solve for fundamental matrix. More will only introduce more outliers
     elif model_estimator == "eight_point":
-        sample_size = 4
+        sample_size = 8
     else:
         print("No estimation technique specified")
         return None
@@ -55,7 +55,7 @@ def Ransac(N, matches, keypoints_1, keypoints_2, t, good_enough, model_estimator
         if model_estimator == "baseline_homography":
             F = fit_model_to_sample_own_rationale(sample_kp_im1, sample_kp_im2)
         elif model_estimator == "eight_point":
-            F = fit_model_to_sample_eight_point(sample_kp_im1, sample_kp_im2)
+            F = normalized_eight_point_algorithm(sample_kp_im1, sample_kp_im2)
         else:
             print("Wrong estimator?")
 
@@ -72,7 +72,7 @@ def Ransac(N, matches, keypoints_1, keypoints_2, t, good_enough, model_estimator
             if model_estimator == "baseline_homography":
                 F = fit_model_to_sample_own_rationale(points[inliers, :2], points_[inliers, :2])
             elif model_estimator == "eight_point":
-                F = fit_model_to_sample_eight_point(points[inliers, :2], points_[inliers, :2])
+                F = normalized_eight_point_algorithm(points[inliers, :2], points_[inliers, :2])
             else:
                 print("Wrong estimator?")
                 return None
@@ -106,7 +106,31 @@ def make_homogeneous(array):
     return np.hstack((array, np.ones((array.shape[0], 1))))
 
 
-def fit_model_to_sample_eight_point(keypoints_1, keypoints_2):
+def normalized_eight_point_algorithm(keypoints_1, keypoints_2):
+    X, Y = keypoints_1[:, 0], keypoints_1[:, 1]
+    X_, Y_ = keypoints_1[:, 0], keypoints_1[:, 1]  # X_: X', Y_: Y'
+
+    mx, my = np.mean(X), np.mean(Y)
+    mx_, my_ = np.mean(X_), np.mean(Y_)
+
+    d = np.mean(np.sqrt(np.square(X - mx) + np.square(Y - my)))
+    d_ = np.mean(np.sqrt(np.square(X_ - mx_) + np.square(Y_ - my_)))
+
+    sqrt2_d = np.sqrt(2) / d
+    sqrt2_d_ = np.sqrt(2) / d_
+
+    T = np.asarray([[sqrt2_d, 0, -mx * sqrt2_d], [0, sqrt2_d, -my * sqrt2_d], [0, 0, 1]])
+    T_ = np.asarray([[sqrt2_d_, 0, -mx_ * sqrt2_d_], [0, sqrt2_d_, -my_ * sqrt2_d_], [0, 0, 1]])
+
+    keypoints_1_norm = (T @ make_homogeneous(keypoints_1).T).T
+    keypoints_2_norm = (T_ @ make_homogeneous(keypoints_2).T).T
+
+    F_norm = eight_point_algorithm(keypoints_1_norm[:, :2], keypoints_2_norm[:, :2])
+
+    return T_.T @ F_norm @ T
+
+
+def eight_point_algorithm(keypoints_1, keypoints_2):
     # Fit model to sample
     A = np.zeros((0, 9))
     # Create matrix A
@@ -161,12 +185,12 @@ def get_matching_points(matches, keypoints_1, keypoints_2):
 
 if __name__ == "__main__":
 
-    t = 2
+    t = 300
     good_enough = 100
 
     image_data = [cv.imread(image) for image in sorted(glob.glob("Data/House/*.png"))]
     image_1 = image_data[0]
-    image_2 = image_data[5]
+    image_2 = image_data[1]
 
     matches, kp_des_1, kp_des_2 = find_matches(image_1, image_2)
 
@@ -174,18 +198,26 @@ if __name__ == "__main__":
     keypoints_1_np = cv.KeyPoint.convert(kp_des_1[0])
     keypoints_2_np = cv.KeyPoint.convert(kp_des_2[0])
 
-    best_model, points, points_, pp_with_inliers = Ransac(1000, matches, keypoints_1_np, keypoints_2_np, t,
-                                                          good_enough, model_estimator="baseline_homography")
+    # best_model, points, points_, pp_with_inliers = Ransac(1000, matches[0:8], keypoints_1_np, keypoints_2_np, t,
+    #                                                       good_enough, model_estimator="baseline_homography")
 
-    pp_with_inliers = (best_model @ make_homogeneous(keypoints_1_np).T).T
+    best_model, points, points_, pp_with_inliers = Ransac(1000, matches[0:8], keypoints_1_np, keypoints_2_np, t,
+                                                          good_enough, model_estimator="eight_point")
 
-    img3 = cv.drawMatches(image_1, kp_des_1[0], image_2, kp_des_2[0], matches, None,
+    img3 = cv.drawMatches(image_1, kp_des_1[0], image_2, kp_des_2[0], matches[0:8], None,
                           flags=cv.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
 
-    for k in np.arange(points.shape[0]):
-        cv.circle(image_1, (int(keypoints_1_np[k][0]), int(keypoints_1_np[k][1])), 2, (0, 255, 0), -1)
-        cv.circle(image_2, (int(keypoints_2_np[k][0]), int(keypoints_2_np[k][1])), 4, (0, 255, 0), -1)
-        cv.circle(image_2, (int(pp_with_inliers[k][0]), int(pp_with_inliers[k][1])), 2, (0, 0, 255), -1)
+    matched_keypoints_1, matched_keypoints_2 = get_matching_points(matches, keypoints_1_np, keypoints_2_np)
+
+    transformed_keypoints = (best_model @ make_homogeneous(matched_keypoints_1).T).T
+
+
+    # for k in np.arange(keypoints_1_np.shape[0]):
+    for k in np.arange(10):
+        cv.circle(image_1, (int(matched_keypoints_1[k][0]), int(matched_keypoints_1[k][1])), 4, (0, 255, 0), -1)
+        # cv.circle(image_1, (int(transformed_keypoints[k][0]), int(transformed_keypoints[k][1])), 2, (0, 0, 255), -1)
+        cv.circle(image_2, (int(matched_keypoints_2[k][0]), int(matched_keypoints_2[k][1])), 4, (0, 255, 0), -1)
+        cv.circle(image_2, (int(transformed_keypoints[k][0]), int(transformed_keypoints[k][1])), 2, (0, 0, 255), -1)
 
     while cv.waitKey(30):
         cv.imshow("kp 1", image_1)
