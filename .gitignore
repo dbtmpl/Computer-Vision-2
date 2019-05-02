@@ -1,5 +1,6 @@
 Assignment_1/Data/data/
 Assignment_2/Data/*
+Assignment_2/Reading/*
 .idea/
 *.xml
 __pycache__/

@@ -2,6 +2,7 @@ import numpy as np
 import cv2 as cv
 import glob
 from scipy.linalg import null_space
+from matplotlib import pyplot as plt
 
 
 # Since we use Python, instead of using VLFeat we perform feature matching with ORB and BFMatcher. The corresponding
@@ -24,6 +25,10 @@ def ransac(N, matches, keypoints_1, keypoints_2, t, estimator="norm_eight_point"
     best_model = None
     best_fit = 0
 
+    # Get points for testing F
+    # points, points_ = get_matching_points(matches, make_homogeneous(keypoints_1), make_homogeneous(keypoints_2))
+    points, points_ = make_homogeneous(keypoints_1), make_homogeneous(keypoints_2)
+
     # Need 8 unknowns to solve for fundamental matrix. More will only introduce additional outliers
     if estimator == "baseline_homography":
         sample_size = 4
@@ -35,9 +40,9 @@ def ransac(N, matches, keypoints_1, keypoints_2, t, estimator="norm_eight_point"
 
     for n in np.arange(N):
         print("Current Iteration", n)
-        sample = np.random.choice(matches, sample_size, replace=False)
-        # F = fit_model_to_sample(sample, keypoints_1, keypoints_2)
-        sample_kp_im1, sample_kp_im2 = get_matching_points(sample, keypoints_1, keypoints_2)
+        sample = np.random.choice(len(matches), sample_size, replace=False)
+        sample_kp_im1 = keypoints_1[sample]
+        sample_kp_im2 = keypoints_2[sample]
         if estimator == "baseline_homography":
             F = fit_model_to_sample(sample_kp_im1, sample_kp_im2)
         elif estimator == "eight_point":
@@ -46,9 +51,6 @@ def ransac(N, matches, keypoints_1, keypoints_2, t, estimator="norm_eight_point"
             F = normalized_eight_point_algorithm(sample_kp_im1, sample_kp_im2)
         else:
             print("Wrong estimator?")
-
-        # Get points for testing F
-        points, points_ = get_matching_points(matches, make_homogeneous(keypoints_1), make_homogeneous(keypoints_2))
 
         inliers = estimate_inliers(F, points, points_, t)
         number_inliers = np.where(inliers)[0].shape[0]
@@ -107,8 +109,8 @@ def estimate_inliers_for_homography(F, points, points_, t):
 
 
 def find_epipolar_lines(F, keypoints_1, keypoints_2):
-    l_rs = [F @ keypoints_1[i] for i in np.arange(keypoints_1.shape[0])]
-    l_ls = [F.T @ keypoints_2[i] for i in np.arange(keypoints_2.shape[0])]
+    l_rs = [F.T @ keypoints_1[i] for i in np.arange(keypoints_1.shape[0])]
+    l_ls = [F @ keypoints_2[i] for i in np.arange(keypoints_2.shape[0])]
 
     return np.asarray(l_ls), np.asarray(l_rs)
 
@@ -117,9 +119,17 @@ def find_epipoles(F):
     return np.asarray(null_space(F.T)), np.asarray(null_space(F))
 
 
+def estimate_fundamental_matrix(matches, keypoints_1, keypoints_2):
+    sample = np.random.choice(len(matches), 8, replace=False)
+    points = keypoints_1[sample]
+    points_ = keypoints_2[sample]
+    return normalized_eight_point_algorithm(points, points_), make_homogeneous(points), make_homogeneous(
+        points_)
+
+
 def normalized_eight_point_algorithm(keypoints_1, keypoints_2):
     X, Y = keypoints_1[:, 0], keypoints_1[:, 1]
-    X_, Y_ = keypoints_1[:, 0], keypoints_1[:, 1]  # X_: X', Y_: Y'
+    X_, Y_ = keypoints_2[:, 0], keypoints_2[:, 1]  # X_: X', Y_: Y'
 
     mx, my = np.mean(X), np.mean(Y)
     mx_, my_ = np.mean(X_), np.mean(Y_)
@@ -130,15 +140,16 @@ def normalized_eight_point_algorithm(keypoints_1, keypoints_2):
     sqrt2_d = np.sqrt(2) / d
     sqrt2_d_ = np.sqrt(2) / d_
 
-    T = np.asarray([[sqrt2_d, 0, -mx * sqrt2_d], [0, sqrt2_d, -my * sqrt2_d], [0, 0, 1]])
-    T_ = np.asarray([[sqrt2_d_, 0, -mx_ * sqrt2_d_], [0, sqrt2_d_, -my_ * sqrt2_d_], [0, 0, 1]])
+    mT = np.asarray([[sqrt2_d, 0, -mx * sqrt2_d], [0, sqrt2_d, -my * sqrt2_d], [0, 0, 1]])
+    mT_ = np.asarray([[sqrt2_d_, 0, -mx_ * sqrt2_d_], [0, sqrt2_d_, -my_ * sqrt2_d_], [0, 0, 1]])
 
-    keypoints_1_norm = (T @ make_homogeneous(keypoints_1).T).T
-    keypoints_2_norm = (T_ @ make_homogeneous(keypoints_2).T).T
+    keypoints_1_norm = (mT @ make_homogeneous(keypoints_1).T).T
+    keypoints_2_norm = (mT_ @ make_homogeneous(keypoints_2).T).T
 
     F_norm = eight_point_algorithm(keypoints_1_norm[:, :2], keypoints_2_norm[:, :2])
 
-    return T_.T @ F_norm @ T
+    # return mT_.T @ F_norm @ mT
+    return F_norm
 
 
 def eight_point_algorithm(keypoints_1, keypoints_2):
@@ -185,7 +196,7 @@ def get_matching_points(matches, keypoints_1, keypoints_2):
 
 
 def make_homogeneous(array):
-    return np.hstack((array, np.ones((array.shape[0], 1))))
+    return np.int32(np.hstack((array, np.ones((array.shape[0], 1)))))
 
 
 def homogeneous_to_2D_point(array):
@@ -199,12 +210,6 @@ def homogeneous_to_2D(array):
     ac = array[:, 0] / array[:, 2]
     bc = array[:, 1] / array[:, 2]
     return np.hstack((ac.reshape(length, 1), bc.reshape(length, 1)))
-
-
-def estimate_fundamental_matrix(matches, keypoints_1, keypoints_2):
-    sample = np.random.choice(matches, 8, replace=False)
-    points, points_ = get_matching_points(sample, keypoints_1, keypoints_2)
-    return normalized_eight_point_algorithm(points, points_), make_homogeneous(points), make_homogeneous(points_)
 
 
 def check_fundamental_matrix(F, keypoints_1, keypoints_2):
@@ -289,18 +294,15 @@ if __name__ == "__main__":
     image_2 = image_data[1]
 
     image_size = image_1.shape
-
     matches, kp_des_1, kp_des_2 = find_matches(image_1, image_2)
 
     # Convert opencv keypoint representation in numpy array
-    keypoints_1_np = cv.KeyPoint.convert(kp_des_1[0])
-    keypoints_2_np = cv.KeyPoint.convert(kp_des_2[0])
+    keypoints_1_np = np.int32(cv.KeyPoint.convert(kp_des_1[0]))
+    keypoints_2_np = np.int32(cv.KeyPoint.convert(kp_des_2[0]))
+    keypoints_1_np, keypoints_2_np = get_matching_points(matches, keypoints_1_np, keypoints_2_np)
 
-    print(len(matches))
-
-    F, points, points_ = ransac(1000, matches, keypoints_1_np, keypoints_2_np, 0.001, estimator="norm_eight_point")
-
-    # F, points, points_ = estimate_fundamental_matrix(matches, keypoints_1_np, keypoints_2_np)
+    # F, points, points_ = ransac(1000, matches, keypoints_1_np, keypoints_2_np, 0.001, estimator="norm_eight_point")
+    F, points, points_ = estimate_fundamental_matrix(matches, keypoints_1_np, keypoints_2_np)
 
     print("Check Fundamental Matrix")
     check_fundamental_matrix(F, points, points_)
@@ -316,16 +318,21 @@ if __name__ == "__main__":
     print(points_[0] @ F @ le)
     print(re.T @ F @ points[0])
 
+    print("Epipoles")
+    print(int(le[0]), int(le[0]))
+    print(int(re[0]), int(re[0]))
+
     pt1_l, pt2_l = get_coordinates_from_line(l_ls, image_size)
     pt1_r, pt2_r = get_coordinates_from_line(l_ls, image_size)
 
     for k in np.arange(points.shape[0]):
+        print(k)
         cv.circle(image_1, (int(points[k][0]), int(points[k][1])), 4, (0, 255, 0), -1)
         cv.circle(image_2, (int(points_[k][0]), int(points_[k][1])), 4, (0, 255, 0), -1)
 
-        cv.circle(image_1, (int(le[0]), int(le[1])), 4, (0, 255, 0), -1)
-        cv.circle(image_2, (int(re[0]), int(re[1])), 4, (0, 255, 0), -1)
-        #
+        cv.circle(image_1, (int(le[0]), int(le[1])), 4, (255, 255, 0), -1)
+        cv.circle(image_2, (int(re[0]), int(re[1])), 4, (255, 255, 0), -1)
+
         cv.line(image_1, (int(pt1_l[k][0]), int(pt1_l[k][1])), (int(pt2_l[k][0]), int(pt2_l[k][1])), (255, 0, 0),
                 thickness=1, lineType=8)
         cv.line(image_2, (int(pt1_r[k][0]), int(pt1_r[k][1])), (int(pt2_r[k][0]), int(pt2_r[k][1])), (255, 0, 0),

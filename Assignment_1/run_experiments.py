@@ -58,12 +58,12 @@ def run_experiments_ex_3_2(sample_size, sample_technique):
             accumulated_target_coords = np.delete(accumulated_target_coords, exclude_indices, 0)
             accumulated_target_normals = np.delete(accumulated_target_normals, exclude_indices, 0)
 
-        np.save(
-            "Transformations/data_transformations_3_2_sample_" + str(
-                sample_size) + "_" + sample_technique + "_fg1_test", transformations)
-
-        np.save("Transformations/rms_error_3_2_sample_{}_{}_fg{}".format(str(sample_size), sample_technique, str(1)),
-                np.asarray(plot_errors))
+        # np.save(
+        #     "Transformations/data_transformations_3_2_sample_" + str(
+        #         sample_size) + "_" + sample_technique + "_fg1_test", transformations)
+        #
+        # np.save("Transformations/rms_error_3_2_sample_{}_{}_fg{}".format(str(sample_size), sample_technique, str(1)),
+        #         np.asarray(plot_errors))
 
 
 def reconstruct_3_2():
@@ -129,7 +129,7 @@ def plot_final_rmses(ex_3_2=False):
 
 
 # run_experiments_ex_3_1()
-# run_experiments_ex_3_2(4000, "uniform")
+run_experiments_ex_3_2(4000, "uniform")
 # reconstruct_3_2()
 
 # reconstruct_3d(5000, "uniform", 4)

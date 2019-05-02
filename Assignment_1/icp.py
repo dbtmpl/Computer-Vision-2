@@ -146,12 +146,12 @@ def compute_svd(base, target):
     # W = np.eye(A1_centered.shape[0])
     # S = A1_centered.T.dot(W).dot(A2_centered)
     S = centered_base.T @ centered_target
-    U, _, V = np.linalg.svd(S)
+    U, _, Vt = np.linalg.svd(S)
 
     ident = np.identity(U.shape[0])
-    ident[-1, -1] = np.linalg.det(V.T @ U)
+    ident[-1, -1] = np.linalg.det(Vt.T @ U)
 
-    R = V.T @ ident @ U.T
+    R = Vt.T @ ident @ U.T
     t = target_centroid - R @ base_centroid
 
     return R, t
