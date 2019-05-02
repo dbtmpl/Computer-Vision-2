@@ -4,12 +4,13 @@ import glob
 from scipy.linalg import null_space
 
 
-# Since we use Python, instead of VLFeat we perform feature matching with ORB and BFMatcher. The corresponding code is based on
-# https://docs.opencv.org/master/d1/d89/tutorial_py_orb.html
-# https://docs.opencv.org/master/dc/dc3/tutorial_py_matcher.html
+# Since we use Python, instead of using VLFeat we perform feature matching with ORB and BFMatcher. The corresponding
+# code is based on
+# (https://docs.opencv.org/master/d1/d89/tutorial_py_orb.html)
+# (https://docs.opencv.org/master/dc/dc3/tutorial_py_matcher.html)
 
 
-def Ransac(N, matches, keypoints_1, keypoints_2, t, good_enough, model_estimator="baseline_homography"):
+def ransac(N, matches, keypoints_1, keypoints_2, t, estimator="norm_eight_point"):
     """
 
     :param N: Number of iterations
@@ -20,12 +21,13 @@ def Ransac(N, matches, keypoints_1, keypoints_2, t, good_enough, model_estimator
 
     :return: Best transformation
     """
-
     best_model = None
     best_fit = 0
-    if model_estimator == "baseline_homography":
-        sample_size = 4  # Need 8 unknowns to solve for fundamental matrix. More will only introduce more outliers
-    elif model_estimator == "eight_point":
+
+    # Need 8 unknowns to solve for fundamental matrix. More will only introduce additional outliers
+    if estimator == "baseline_homography":
+        sample_size = 4
+    elif estimator == "eight_point" or estimator == "norm_eight_point":
         sample_size = 8
     else:
         print("No estimation technique specified")
@@ -36,9 +38,11 @@ def Ransac(N, matches, keypoints_1, keypoints_2, t, good_enough, model_estimator
         sample = np.random.choice(matches, sample_size, replace=False)
         # F = fit_model_to_sample(sample, keypoints_1, keypoints_2)
         sample_kp_im1, sample_kp_im2 = get_matching_points(sample, keypoints_1, keypoints_2)
-        if model_estimator == "baseline_homography":
+        if estimator == "baseline_homography":
             F = fit_model_to_sample(sample_kp_im1, sample_kp_im2)
-        elif model_estimator == "eight_point":
+        elif estimator == "eight_point":
+            F = eight_point_algorithm(sample_kp_im1, sample_kp_im2)
+        elif estimator == "norm_eight_point":
             F = normalized_eight_point_algorithm(sample_kp_im1, sample_kp_im2)
         else:
             print("Wrong estimator?")
@@ -53,20 +57,20 @@ def Ransac(N, matches, keypoints_1, keypoints_2, t, good_enough, model_estimator
         if number_inliers > best_fit:
             best_fit = number_inliers
 
-            if model_estimator == "baseline_homography":
+            if estimator == "baseline_homography":
                 F = fit_model_to_sample(points[inliers, :2], points_[inliers, :2])
-            elif model_estimator == "eight_point":
-                ptest = points[inliers, :2]
-                ptest_ = points_[inliers, :2]
-                F = normalized_eight_point_algorithm(points[inliers, :2], points_[inliers, :2])
+            elif estimator == "eight_point":
+                F = eight_point_algorithm(sample_kp_im1, sample_kp_im2)
+            elif estimator == "norm_eight_point":
+                F = normalized_eight_point_algorithm(sample_kp_im1, sample_kp_im2)
             else:
                 print("Wrong estimator?")
                 return None
 
             best_model = F
 
-            # if number_inliers > good_enough:
-            #     return best_model, points, points_
+            if number_inliers >= len(matches):
+                return best_model, points, points_
 
     print("Best number of inliers:", best_fit)
     return best_model, points, points_
@@ -227,8 +231,7 @@ def get_coordinates_from_line(epls, image_shape):
 
 
 def estimate_homography(image_1, image_2, matches, keypoints_1, keypoints_2, N, t, good_enough):
-    best_model, points, points_, pp_with_inliers = Ransac(N, matches, keypoints_1, keypoints_2, t,
-                                                          good_enough, model_estimator="baseline_homography")
+    best_model, points, points_ = ransac(N, matches, keypoints_1, keypoints_2, t, estimator="baseline_homography")
 
     # im_matches = cv.drawMatches(image_1, kp_des_1[0], image_2, kp_des_2[0], matches[0:8], None,
     #                       flags=cv.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
@@ -276,6 +279,10 @@ def fit_model_to_sample(keypoints_1, keypoints_2):
     return np.append(f, np.asarray([[1]]), axis=0).reshape((3, 3))
 
 
+def chaining():
+    pass
+
+
 if __name__ == "__main__":
     image_data = [cv.imread(image) for image in sorted(glob.glob("Data/House/*.png"))]
     image_1 = image_data[0]
@@ -291,8 +298,7 @@ if __name__ == "__main__":
 
     print(len(matches))
 
-    F, points, points_ = Ransac(1000, matches, keypoints_1_np, keypoints_2_np, 0.05, 500,
-                                model_estimator="eight_point")
+    F, points, points_ = ransac(1000, matches, keypoints_1_np, keypoints_2_np, 0.001, estimator="norm_eight_point")
 
     # F, points, points_ = estimate_fundamental_matrix(matches, keypoints_1_np, keypoints_2_np)
 
@@ -310,9 +316,6 @@ if __name__ == "__main__":
     print(points_[0] @ F @ le)
     print(re.T @ F @ points[0])
 
-    print("Epipole")
-    print(le, re)
-
     pt1_l, pt2_l = get_coordinates_from_line(l_ls, image_size)
     pt1_r, pt2_r = get_coordinates_from_line(l_ls, image_size)
 
@@ -323,10 +326,10 @@ if __name__ == "__main__":
         cv.circle(image_1, (int(le[0]), int(le[1])), 4, (0, 255, 0), -1)
         cv.circle(image_2, (int(re[0]), int(re[1])), 4, (0, 255, 0), -1)
         #
-        cv.line(image_1, (int(pt1_l[k][0]), int(pt1_l[k][1])), (int(pt2_l[k][0]), int(pt2_l[k][1])), (255, 0, 0), thickness=1,
-                lineType=8)
-        cv.line(image_2, (int(pt1_r[k][0]), int(pt1_r[k][1])), (int(pt2_r[k][0]), int(pt2_r[k][1])), (255, 0, 0), thickness=1,
-                lineType=8)
+        cv.line(image_1, (int(pt1_l[k][0]), int(pt1_l[k][1])), (int(pt2_l[k][0]), int(pt2_l[k][1])), (255, 0, 0),
+                thickness=1, lineType=8)
+        cv.line(image_2, (int(pt1_r[k][0]), int(pt1_r[k][1])), (int(pt2_r[k][0]), int(pt2_r[k][1])), (255, 0, 0),
+                thickness=1, lineType=8)
 
     while cv.waitKey(30):
         cv.imshow("kp 1", image_1)
