@@ -47,7 +47,7 @@ def Ransac(N, matches, keypoints_1, keypoints_2, t, good_enough, model_estimator
         points, points_ = get_matching_points(matches, make_homogeneous(keypoints_1), make_homogeneous(keypoints_2))
 
         inliers = estimate_inliers(F, points, points_, t)
-        number_inliers = inliers.shape[0]
+        number_inliers = np.where(inliers)[0].shape[0]
         print("Number Inliers", number_inliers)
 
         if number_inliers > best_fit:
@@ -56,6 +56,8 @@ def Ransac(N, matches, keypoints_1, keypoints_2, t, good_enough, model_estimator
             if model_estimator == "baseline_homography":
                 F = fit_model_to_sample(points[inliers, :2], points_[inliers, :2])
             elif model_estimator == "eight_point":
+                ptest = points[inliers, :2]
+                ptest_ = points_[inliers, :2]
                 F = normalized_eight_point_algorithm(points[inliers, :2], points_[inliers, :2])
             else:
                 print("Wrong estimator?")
@@ -104,7 +106,7 @@ def find_epipolar_lines(F, keypoints_1, keypoints_2):
     l_rs = [F @ keypoints_1[i] for i in np.arange(keypoints_1.shape[0])]
     l_ls = [F.T @ keypoints_2[i] for i in np.arange(keypoints_2.shape[0])]
 
-    return l_ls, l_rs
+    return np.asarray(l_ls), np.asarray(l_rs)
 
 
 def find_epipoles(F):
@@ -182,16 +184,22 @@ def make_homogeneous(array):
     return np.hstack((array, np.ones((array.shape[0], 1))))
 
 
-def homogeneous_to_2D(array):
-    length = array.shape[0]
+def homogeneous_to_2D_point(array):
     ac = array[0] / array[2]
     bc = array[1] / array[2]
     return np.asarray([ac, bc]).reshape((2, 1))
 
 
+def homogeneous_to_2D(array):
+    length = array.shape[0]
+    ac = array[:, 0] / array[:, 2]
+    bc = array[:, 1] / array[:, 2]
+    return np.hstack((ac.reshape(length, 1), bc.reshape(length, 1)))
+
+
 def estimate_fundamental_matrix(matches, keypoints_1, keypoints_2):
-    # sample = np.random.choice(matches, 8, replace=False)
-    points, points_ = get_matching_points(matches, keypoints_1, keypoints_2)
+    sample = np.random.choice(matches, 8, replace=False)
+    points, points_ = get_matching_points(sample, keypoints_1, keypoints_2)
     return normalized_eight_point_algorithm(points, points_), make_homogeneous(points), make_homogeneous(points_)
 
 
@@ -199,6 +207,23 @@ def check_fundamental_matrix(F, keypoints_1, keypoints_2):
     zeros_hopefully = [keypoints_2[i].T @ F @ keypoints_1[i] for i in np.arange(keypoints_1.shape[0])]
 
     print(zeros_hopefully)
+
+
+def get_coordinates_from_line(epls, image_shape):
+    length = epls.shape[0]
+    Y = image_shape[0] + 1
+
+    # Point (x, -1)
+    pt1_x = np.asarray([(epls[i][1] - epls[i][2]) / epls[i][0] for i in np.arange(epls.shape[0])])
+    pt1_y = np.ones((length, 1)) * -1
+    pt1 = np.hstack((pt1_x.reshape(length, 1), pt1_y.reshape(length, 1)))
+
+    # Point (x, Y+1)
+    pt2_x = np.asarray([(epls[i][1] * -Y - epls[i][2]) / epls[i][0] for i in np.arange(epls.shape[0])])
+    pt2_y = np.ones((length, 1)) * Y
+    pt2 = np.hstack((pt2_x.reshape(length, 1), pt2_y.reshape(length, 1)))
+
+    return pt1, pt2
 
 
 def estimate_homography(image_1, image_2, matches, keypoints_1, keypoints_2, N, t, good_enough):
@@ -256,18 +281,24 @@ if __name__ == "__main__":
     image_1 = image_data[0]
     image_2 = image_data[1]
 
+    image_size = image_1.shape
+
     matches, kp_des_1, kp_des_2 = find_matches(image_1, image_2)
 
     # Convert opencv keypoint representation in numpy array
     keypoints_1_np = cv.KeyPoint.convert(kp_des_1[0])
     keypoints_2_np = cv.KeyPoint.convert(kp_des_2[0])
 
-    F, points, points_ = Ransac(1000, matches, keypoints_1_np, keypoints_2_np, 1, 500,
+    print(len(matches))
+
+    F, points, points_ = Ransac(1000, matches, keypoints_1_np, keypoints_2_np, 0.05, 500,
                                 model_estimator="eight_point")
 
-    # F, points, points_ = estimate_fundamental_matrix(matches[:20], keypoints_1_np, keypoints_2_np)
-    # check_fundamental_matrix(F, points, points_)
-    #
+    # F, points, points_ = estimate_fundamental_matrix(matches, keypoints_1_np, keypoints_2_np)
+
+    print("Check Fundamental Matrix")
+    check_fundamental_matrix(F, points, points_)
+
     l_ls, l_rs = find_epipolar_lines(F, points, points_)
     le, re = find_epipoles(F)
 
@@ -279,19 +310,22 @@ if __name__ == "__main__":
     print(points_[0] @ F @ le)
     print(re.T @ F @ points[0])
 
-    le, re = homogeneous_to_2D(le), homogeneous_to_2D(re)
+    print("Epipole")
+    print(le, re)
+
+    pt1_l, pt2_l = get_coordinates_from_line(l_ls, image_size)
+    pt1_r, pt2_r = get_coordinates_from_line(l_ls, image_size)
 
     for k in np.arange(points.shape[0]):
-        # for k in np.arange(9, 10):
         cv.circle(image_1, (int(points[k][0]), int(points[k][1])), 4, (0, 255, 0), -1)
         cv.circle(image_2, (int(points_[k][0]), int(points_[k][1])), 4, (0, 255, 0), -1)
 
         cv.circle(image_1, (int(le[0]), int(le[1])), 4, (0, 255, 0), -1)
         cv.circle(image_2, (int(re[0]), int(re[1])), 4, (0, 255, 0), -1)
         #
-        cv.line(image_1, (int(le[0]), int(le[1])), (int(points[k][0]), int(points[k][1])), (255, 0, 0), thickness=1,
+        cv.line(image_1, (int(pt1_l[k][0]), int(pt1_l[k][1])), (int(pt2_l[k][0]), int(pt2_l[k][1])), (255, 0, 0), thickness=1,
                 lineType=8)
-        cv.line(image_2, (int(re[0]), int(re[1])), (int(points[k][0]), int(points[k][1])), (255, 0, 0), thickness=1,
+        cv.line(image_2, (int(pt1_r[k][0]), int(pt1_r[k][1])), (int(pt2_r[k][0]), int(pt2_r[k][1])), (255, 0, 0), thickness=1,
                 lineType=8)
 
     while cv.waitKey(30):
