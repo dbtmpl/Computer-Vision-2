@@ -212,10 +212,13 @@ def homogeneous_to_2D(array):
     return np.hstack((ac.reshape(length, 1), bc.reshape(length, 1)))
 
 
-def check_fundamental_matrix(F, keypoints_1, keypoints_2):
-    zeros_hopefully = [keypoints_2[i].T @ F @ keypoints_1[i] for i in np.arange(keypoints_1.shape[0])]
-
+def check_fundamental_matrix(F, keypoints_1, keypoints_2, threshold):
+    zeros_hopefully = np.asarray([keypoints_2[i].T @ F @ keypoints_1[i] for i in np.arange(keypoints_1.shape[0])])
+    print(zeros_hopefully.shape)
     print(zeros_hopefully)
+    indices = zeros_hopefully < threshold
+    print(np.where(indices)[0].shape[0])
+    return keypoints_1[indices], keypoints_2[indices]
 
 
 def get_coordinates_from_line(epls, image_shape):
@@ -289,6 +292,7 @@ def chaining():
 
 
 def setup():
+    # image_data = [cv.imread(image) for image in sorted(glob.glob("Data/House/*.jpg"))]
     image_data = [cv.imread(image) for image in sorted(glob.glob("Data/House/*.png"))]
     image_1 = image_data[0]
     image_2 = image_data[1]
@@ -302,17 +306,21 @@ def setup():
     keypoints_1_np, keypoints_2_np = get_matching_points(matches, keypoints_1_np, keypoints_2_np)
     points, points_ = make_homogeneous(keypoints_1_np), make_homogeneous(keypoints_2_np)
 
-    # im_matches = cv.drawMatches(image_1, keypoints_1, image_2, keypoints_2, matches[:8], None,
+    # im_matches = cv.drawMatches(image_1, keypoints_1, image_2, keypoints_2, matches[:100], None,
     #                             flags=cv.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
 
-    F, points, points_ = ransac(100, matches, points, points_, 0.00005, estimator="norm_eight_point")
+    F, points, points_ = ransac(100, matches, points, points_, 0.005, estimator="norm_eight_point")
     # F, points, points_ = estimate_fundamental_matrix(matches, points, points_)
 
-    # For testing purposes
-    # F, _ = cv.findFundamentalMat(points, points_, cv.FM_8POINT)
+    # OPENCV functions for testing purposes
+    # F, _ = cv.findFundamentalMat(points, points_, cv.FM_LMEDS)
+    # l_ls = cv.computeCorrespondEpilines(points_.reshape(-1, 1, 2), 2, F)
+    # l_ls = l_ls.reshape(-1, 3)
+    # l_rs = cv.computeCorrespondEpilines(points.reshape(-1, 1, 2), 2, F)
+    # l_rs = l_rs.reshape(-1, 3)
 
     print("Check Fundamental Matrix")
-    check_fundamental_matrix(F, points, points_)
+    points, points_ = check_fundamental_matrix(F, points, points_, 0.0001)
 
     l_ls, l_rs = find_epipolar_lines(F, points, points_)
     le, re = find_epipoles(F)
@@ -336,16 +344,16 @@ def setup():
 
     for k in np.arange(points.shape[0]):
         color = tuple(np.random.randint(0, 255, 3).tolist())
-        cv.circle(image_1, (int(points[k][0]), int(points[k][1])), 2, color, -1)
-        cv.circle(image_2, (int(points_[k][0]), int(points_[k][1])), 2, color, -1)
+        cv.circle(image_1, (int(points[k][0]), int(points[k][1])), 4, (0, 255, 0), -1)
+        cv.circle(image_2, (int(points_[k][0]), int(points_[k][1])), 4, (0, 255, 0), -1)
 
         cv.line(image_1, (int(pt1_l[k][0]), int(pt1_l[k][1])), (int(pt2_l[k][0]), int(pt2_l[k][1])), color,
                 thickness=1, lineType=8)
         cv.line(image_2, (int(pt1_r[k][0]), int(pt1_r[k][1])), (int(pt2_r[k][0]), int(pt2_r[k][1])), color,
                 thickness=1, lineType=8)
 
-    cv.circle(image_1, (int(le2d[0]), int(le2d[0])), 4, (255, 255, 0), -1)
-    cv.circle(image_2, (int(re2d[0]), int(re2d[0])), 4, (255, 255, 0), -1)
+    # cv.circle(image_1, (int(le2d[0]), int(le2d[0])), 4, (255, 255, 0), -1)
+    # cv.circle(image_2, (int(re2d[0]), int(re2d[0])), 4, (255, 255, 0), -1)
 
     while cv.waitKey(30):
         cv.imshow("kp 1", image_1)
