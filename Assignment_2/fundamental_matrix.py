@@ -3,6 +3,7 @@ import cv2 as cv
 import glob
 from scipy.linalg import null_space
 from matplotlib import pyplot as plt
+from scipy import spatial
 
 
 # Since we use Python, instead of using VLFeat we perform feature matching with ORB and BFMatcher. The corresponding
@@ -170,7 +171,7 @@ def eight_point_algorithm(keypoints_1, keypoints_2):
     return Uf @ np.diag(Df) @ Vft
 
 
-def find_matches(image_1, image_2):
+def find_matches(image_1, image_2, return_descriptors=False):
     # Initiate ORB detector and BFMatcher
     orb = cv.ORB_create()
     bf = cv.BFMatcher(cv.NORM_HAMMING, crossCheck=True)
@@ -181,11 +182,13 @@ def find_matches(image_1, image_2):
 
     # Match descriptors.
     # queryIdx refers to keypoints_1, trainIdx refers to keypoints_2
-    # _matches = bf.match(descriptors_1, descriptors_2)
     _matches = bf.match(descriptors_1, descriptors_2)
 
-    # Sort them in the order of their distance
-    return sorted(_matches, key=lambda x: x.distance), keypoints_1, keypoints_2
+    if not return_descriptors:
+        # Sort them in the order of their distance
+        return sorted(_matches, key=lambda x: x.distance), keypoints_1, keypoints_2
+    else:
+        return sorted(_matches, key=lambda x: x.distance), keypoints_1, keypoints_2, descriptors_1, descriptors_2
 
 
 def get_matching_points(matches, keypoints_1, keypoints_2):
@@ -287,16 +290,9 @@ def fit_model_to_sample(keypoints_1, keypoints_2):
     return np.append(f, np.asarray([[1]]), axis=0).reshape((3, 3))
 
 
-def chaining():
-    pass
-
-
-def setup():
-    # image_data = [cv.imread(image) for image in sorted(glob.glob("Data/House/*.jpg"))]
-    image_data = [cv.imread(image) for image in sorted(glob.glob("Data/House/*.png"))]
+def experiments_exercise_3(image_data):
     image_1 = image_data[0]
     image_2 = image_data[1]
-
     image_size = image_1.shape
     matches, keypoints_1, keypoints_2 = find_matches(image_1, image_2)
 
@@ -363,5 +359,100 @@ def setup():
     # estimate_homography(image_1, image_2, matches, keypoints_1_np, keypoints_2_np, 1000, 3, 400)
 
 
+def match_keypoints_and_descriptors(matches, keypoints_1, keypoints_2, descriptors_1, descriptors_2):
+    image1_indices = [match.queryIdx for match in matches]
+    image2_indices = [match.trainIdx for match in matches]
+    keypoints_1, descriptors_1 = keypoints_1[image1_indices], descriptors_1[image1_indices]
+    keypoints_2, descriptors_2 = keypoints_2[image2_indices], descriptors_2[image2_indices]
+
+    return keypoints_1, keypoints_2, descriptors_1, descriptors_2
+
+
+def chaining(image_data, t):
+    number_of_images = len(image_data)
+    keypoints_upper_bound = 500 * 50
+    point_view_matrix = np.zeros((number_of_images, 2, keypoints_upper_bound))
+    previous_matched_keypoints = None
+    number_saved_keypoints = 0
+
+    for i in np.arange(0, number_of_images - 1):
+        print("Iteration", i)
+        print("Current saved points", number_saved_keypoints)
+
+        # added_kp_curr_iter = 0
+
+        image_1 = image_data[i]
+        image_2 = image_data[i + 1]
+        matches, keypoints_1, keypoints_2, descriptors_1, descriptors_2 = find_matches(image_1, image_2, True)
+
+        print("How many matches")
+        print(len(matches))
+
+        # When want to restrict number of added keypoints
+        # number_of_matches = len(matches)
+        # adding_matches = min(100, number_of_matches)
+
+        keypoints_1_np = np.int32(cv.KeyPoint.convert(keypoints_1))
+        keypoints_2_np = np.int32(cv.KeyPoint.convert(keypoints_2))
+
+        keypoints_1_np, keypoints_2_np, descriptors_1, descriptors_2 = match_keypoints_and_descriptors(matches,
+                                                                                                       keypoints_1_np,
+                                                                                                       keypoints_2_np,
+                                                                                                       descriptors_1,
+                                                                                                       descriptors_2)
+
+        # We want to find the indices of previous keypoints as they correspond with the already added matches
+        # We want to see which new keypoints match with the old ones, get the indices and add them in the right places to the view matix
+        # All the keypoints that do not match old mathces are new and get their own column
+
+        if previous_matched_keypoints is not None:
+            keypoints_previous, descriptors_previous = previous_matched_keypoints
+
+            bf = cv.BFMatcher(cv.NORM_HAMMING, crossCheck=True)
+            _matches = bf.match(descriptors_1, descriptors_previous)
+            _matches = sorted(_matches, key=lambda x: x.distance)
+            prev_indices = [match.queryIdx for match in _matches]
+            # curr_indices = [match.trainIdx for match in _matches]
+
+            for index in prev_indices:
+                point_view_matrix[i][:2, index] = keypoints_1_np[index].T
+
+            # added_kp_curr_iter += len(prev_indices)
+
+            # TODO: Keep track of "global" indice in point_view_matrix to relate to descriptors over the whole course of the time
+            # Maybe with global array of descriptor indice tuples
+
+            new_keypoints = np.delete(keypoints_1_np, prev_indices, axis=0)
+
+            number_additional_kp = new_keypoints.shape[0]
+
+            print("How many official new keypoints")
+            print(number_additional_kp)
+            print("How many inofficial new keypoints")
+            print(len(matches) - len(prev_indices))
+            print(len(matches) - len(prev_indices) == number_additional_kp)
+
+            for j, index in enumerate(np.arange(number_saved_keypoints, number_saved_keypoints + number_additional_kp)):
+                point_view_matrix[i][:2, index] = new_keypoints[j].T
+
+            number_saved_keypoints += number_additional_kp
+
+        else:
+            point_view_matrix[i][:2, :keypoints_1_np.shape[0]] = keypoints_1_np.T
+            number_saved_keypoints += len(matches)
+
+        previous_matched_keypoints = keypoints_2_np, descriptors_2
+
+    point_view_matrix = point_view_matrix[:, :, :number_saved_keypoints]
+    return point_view_matrix.reshape(number_of_images * 2, point_view_matrix.shape[-1])
+
+
 if __name__ == "__main__":
-    setup()
+    # image_data = [cv.imread(image) for image in sorted(glob.glob("Data/House/*.jpg"))]
+    image_data = [cv.imread(image) for image in sorted(glob.glob("Data/House/*.png"))]
+
+    point_view_matrix = chaining(image_data, 3)
+    binary_pvm = point_view_matrix > 0
+
+    plt.imshow(binary_pvm, aspect=25)
+    plt.show()
