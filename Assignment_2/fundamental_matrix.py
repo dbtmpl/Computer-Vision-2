@@ -366,14 +366,12 @@ def chaining(image_data, t):
     information_previous_iteration = None
     number_saved_keypoints = 0
 
-    # Initiate ORB detector and BFMatcher
+    # Initiate BFMatcher
     bf = cv.BFMatcher(cv.NORM_HAMMING, crossCheck=True)
 
     for i in np.arange(0, number_of_images - 1):
         print("Iteration", i)
-        print("Current saved points", number_saved_keypoints)
-
-        # added_kp_curr_iter = 0
+        # print("Current saved points", number_saved_keypoints)
 
         image_1 = image_data[i]
         image_2 = image_data[i + 1]
@@ -384,10 +382,6 @@ def chaining(image_data, t):
         print("How many matches")
         print(len(matches))
 
-        # If want to restrict number of added keypoints
-        # number_of_matches = len(matches)
-        # adding_matches = min(100, number_of_matches)
-
         keypoints_1_np = np.int32(cv.KeyPoint.convert(keypoints_1))
         keypoints_2_np = np.int32(cv.KeyPoint.convert(keypoints_2))
 
@@ -397,17 +391,13 @@ def chaining(image_data, t):
                                                                                                        descriptors_1,
                                                                                                        descriptors_2)
 
-        # We want to find the indices of previous keypoints as they correspond with the already added matches
-        # We want to see which new keypoints match with the old ones, get the indices and add them in the right places to the view matix
-        # All the keypoints that do not match old mathces are new and get their own column
-
         if information_previous_iteration is not None:
 
             keypoints_previous, descriptors_previous, indices_previous = information_previous_iteration
 
-            print("Loose points?")
-            print(len(indices_previous))
-            print(np.unique(indices_previous).shape[0])
+            # print("Loose points?")
+            # print(len(indices_previous))
+            # print(np.unique(indices_previous).shape[0])
 
             _matches = bf.match(descriptors_1, descriptors_previous)
             _matches = sorted(_matches, key=lambda x: x.distance)
@@ -415,15 +405,13 @@ def chaining(image_data, t):
             survived_pvm_indices = [match.trainIdx for match in _matches]
             current_pvm_indices = indices_previous[survived_pvm_indices]
 
-            print(len(current_pvm_indices))
-
             for j in np.arange(len(current_pvm_indices)):
                 pvm_idx = current_pvm_indices[j]
                 keypoint_idx = survived_indices[j]
                 point_view_matrix[i][:2, pvm_idx] = keypoints_1_np[keypoint_idx].T
 
-            print("AFTER KP: Number of simultaneous keypoints")
-            print(np.where(point_view_matrix[i][1] > 0)[0].shape[0])
+            # print("AFTER KP: Number of simultaneous keypoints")
+            # print(np.where(point_view_matrix[i][1] > 0)[0].shape[0])
 
             new_keypoints = np.delete(keypoints_1_np, survived_indices, axis=0)
             number_additional_kp = new_keypoints.shape[0]
@@ -431,29 +419,22 @@ def chaining(image_data, t):
             for j, index in enumerate(new_indices):
                 point_view_matrix[i][:2, index] = new_keypoints[j].T
 
-            print("AFTER NEW KP: Number of simultaneous keypoints")
-            print(np.where(point_view_matrix[i][1] > 0)[0].shape[0])
-            print("How many official new keypoints")
-            print(number_additional_kp)
+            # print("AFTER NEW KP: Number of simultaneous keypoints")
+            # print(np.where(point_view_matrix[i][1] > 0)[0].shape[0])
+            # print("How many official new keypoints")
+            # print(number_additional_kp)
 
             number_saved_keypoints += number_additional_kp
 
             indices_next_iteration = np.append(current_pvm_indices, new_indices, axis=0)
 
-            print("How many inofficial new keypoints")
-            print(len(matches) - len(survived_indices) == number_additional_kp)
+            # print("How many inofficial new keypoints")
+            # print(len(matches) - len(survived_indices) == number_additional_kp)
 
             print("END: Number of simultaneous keypoints")
             print(np.where(point_view_matrix[i][1] > 0)[0].shape[0])
-            print("indices for next iteration")
-            print(indices_next_iteration.shape[0])
-
-            # _matches = bf.knnMatch(descriptors_1, descriptors_previous, k=2)
-            # Apply ratio test from Lowe's paper
-            # good = []
-            # for m, n in _matches:
-            #     if m.distance < 0.9 * n.distance:
-            #         good.append(m)
+            # print("indices for next iteration")
+            # print(indices_next_iteration.shape[0])
 
         else:
             point_view_matrix[i][:2, :keypoints_1_np.shape[0]] = keypoints_1_np.T
