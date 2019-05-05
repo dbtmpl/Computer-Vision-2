@@ -128,10 +128,11 @@ def plot_final_rmses(ex_3_2=False):
         plt.show()
 
 
-# run_experiments_ex_3_1()
-run_experiments_ex_3_2(4000, "uniform")
+run_experiments_ex_3_1()
+# run_experiments_ex_3_2(4000, "uniform")
 # reconstruct_3_2()
 
 # reconstruct_3d(5000, "uniform", 4)
 
 # plot_final_rmses(True)
+

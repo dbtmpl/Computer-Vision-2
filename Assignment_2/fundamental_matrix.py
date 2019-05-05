@@ -14,7 +14,8 @@ from scipy import spatial
 
 def ransac(N, matches, keypoints_1, keypoints_2, t, estimator="norm_eight_point"):
     """
-
+    Performs the RANSAC in order to estimate the fundamental matrix F.
+    (Or if estimator="baseline_homography", we calculate the homography between the two images).
     :param N: Number of iterations
     :param matches: Matches found between both images
     :param keypoints_1: Corresponding keypoints in the first image
@@ -80,11 +81,24 @@ def ransac(N, matches, keypoints_1, keypoints_2, t, estimator="norm_eight_point"
 
 
 def estimate_inliers(F, points, points_, t):
+    """
+    Determines inliers for the RANSAC algorithm to estimate the fundamental matrix F. The variable names are close to
+    the procedure given in the assignment sheet.
+    :param F:
+    :param points:
+    :param points_:
+    :param t:
+    :return:
+    """
     numerator = np.asarray([np.square(points_[i].T @ F @ points[i]) for i in np.arange(points.shape[0])])  # numerator
 
+    # F*p_i (1)
     Fp1_2 = np.asarray([np.square((F @ points[i])[0]) for i in np.arange(points.shape[0])])
+    # F*p_i (2)
     Fp2_2 = np.asarray([np.square((F @ points[i])[1]) for i in np.arange(points.shape[0])])
+    # F.T*p_i' (1)
     Fp1__2 = np.asarray([np.square((F @ points_[i])[0]) for i in np.arange(points_.shape[0])])
+    # F.T*p_i' (2)
     Fp2__2 = np.asarray([np.square((F @ points_[i])[1]) for i in np.arange(points_.shape[0])])
 
     denominator = Fp1_2 + Fp2_2 + Fp1__2 + Fp2__2
@@ -95,6 +109,14 @@ def estimate_inliers(F, points, points_, t):
 
 
 def estimate_inliers_for_homography(F, points, points_, t):
+    """
+    In case we want to determine the homography between two images with RANSAC, we use this function to determine inliers
+    :param F:
+    :param points:
+    :param points_:
+    :param t:
+    :return:
+    """
     predicted_points = (F @ points.T).T
 
     inliers = []
@@ -110,6 +132,13 @@ def estimate_inliers_for_homography(F, points, points_, t):
 
 
 def find_epipolar_lines(F, keypoints_1, keypoints_2):
+    """
+    Finds epipolar lines by using matching keypoints and the fundamental matrix F.
+    :param F:
+    :param keypoints_1:
+    :param keypoints_2:
+    :return:
+    """
     l_rs = [F @ keypoints_1[i] for i in np.arange(keypoints_1.shape[0])]
     l_ls = [F.T @ keypoints_2[i] for i in np.arange(keypoints_2.shape[0])]
 
@@ -117,10 +146,22 @@ def find_epipolar_lines(F, keypoints_1, keypoints_2):
 
 
 def find_epipoles(F):
+    """
+    Finds the left and right nullspace of F to get the position of the epipoles.
+    :param F:
+    :return:
+    """
     return np.asarray(null_space(F.T)), np.asarray(null_space(F))
 
 
 def estimate_fundamental_matrix(matches, keypoints_1, keypoints_2):
+    """
+    Estimates fundamental matrix given two sets of keypoints and their matches without using RANSAC.
+    :param matches:
+    :param keypoints_1:
+    :param keypoints_2:
+    :return:
+    """
     sample = np.random.choice(len(matches), 8, replace=False)
     points = keypoints_1[sample]
     points_ = keypoints_2[sample]
@@ -128,6 +169,13 @@ def estimate_fundamental_matrix(matches, keypoints_1, keypoints_2):
 
 
 def normalized_eight_point_algorithm(keypoints_1, keypoints_2):
+    """
+    Performs the normalized eight point algorithm for calculating the fundamental matrix F of two arrays of keypoints.
+    The variable names in the code are close to the variables in the formulas in the assignment sheet.
+    :param keypoints_1:
+    :param keypoints_2:
+    :return:
+    """
     X, Y = keypoints_1[:, 0], keypoints_1[:, 1]
     X_, Y_ = keypoints_2[:, 0], keypoints_2[:, 1]  # X_: X', Y_: Y'
 
@@ -153,6 +201,13 @@ def normalized_eight_point_algorithm(keypoints_1, keypoints_2):
 
 
 def eight_point_algorithm(keypoints_1, keypoints_2):
+    """
+    Performs the eight point algorithm for calculating the fundamental matrix F of two arrays of keypoints. The different
+    steps are related to those given in the assignment sheet.
+    :param keypoints_1:
+    :param keypoints_2:
+    :return:s
+    """
     # Fit model to sample
     A = np.zeros((0, 9))
     # Create matrix A
@@ -172,6 +227,15 @@ def eight_point_algorithm(keypoints_1, keypoints_2):
 
 
 def find_matches(image_1, image_2, return_descriptors=False):
+    """
+    Finds matches between two images. For this purpose we use ORB keypoints and the BFmatcher
+    https://docs.opencv.org/3.4.4/db/d95/classcv_1_1ORB.html
+    https://docs.opencv.org/3.4.4/d3/da1/classcv_1_1BFMatcher.html
+    :param image_1:
+    :param image_2:
+    :param return_descriptors:
+    :return:
+    """
     # Initiate ORB detector and BFMatcher
     orb = cv.ORB_create()
     bf = cv.BFMatcher(cv.NORM_HAMMING, crossCheck=True)
@@ -192,6 +256,13 @@ def find_matches(image_1, image_2, return_descriptors=False):
 
 
 def get_matching_points(matches, keypoints_1, keypoints_2):
+    """
+    Aligns (sorts) two arrays of keypoints depending on where they match.
+    :param matches:
+    :param keypoints_1:
+    :param keypoints_2:
+    :return:
+    """
     image1_indices = [match.queryIdx for match in matches]
     image2_indices = [match.trainIdx for match in matches]
 
@@ -199,16 +270,31 @@ def get_matching_points(matches, keypoints_1, keypoints_2):
 
 
 def make_homogeneous(array):
+    """
+    Transforms a non-homogeneous point matrix into a homogeneous one.
+    :param array:
+    :return:
+    """
     return np.int32(np.hstack((array, np.ones((array.shape[0], 1)))))
 
 
 def homogeneous_to_2D_point(array):
+    """
+    Transforms a homogeneous point into its 2D non-homogeneous representation.
+    :param array:
+    :return:
+    """
     ac = array[0] / array[2]
     bc = array[1] / array[2]
     return np.asarray([ac, bc]).reshape((2, 1))
 
 
 def homogeneous_to_2D(array):
+    """
+    Transforms a matrix of homogeneous points into their 2D non-homogeneous representation.
+    :param array:
+    :return:
+    """
     length = array.shape[0]
     ac = array[:, 0] / array[:, 2]
     bc = array[:, 1] / array[:, 2]
@@ -216,6 +302,15 @@ def homogeneous_to_2D(array):
 
 
 def check_fundamental_matrix(F, keypoints_1, keypoints_2, threshold):
+    """
+    Tests if the fundamental matrix F is correct (x'.T @ F @ x = 0) For each point where this is approx. the case we
+    return the indices.
+    :param F:
+    :param keypoints_1:
+    :param keypoints_2:
+    :param threshold:
+    :return:
+    """
     zeros_hopefully = np.asarray([keypoints_2[i].T @ F @ keypoints_1[i] for i in np.arange(keypoints_1.shape[0])])
     print(zeros_hopefully.shape)
     print(zeros_hopefully)
@@ -225,6 +320,13 @@ def check_fundamental_matrix(F, keypoints_1, keypoints_2, threshold):
 
 
 def get_coordinates_from_line(epls, image_shape):
+    """
+    Gets coefficients a, b, c of a the equation of a line => a*x + b*y + c = 0 and calculates the points of the line
+    in the given image.
+    :param epls:
+    :param image_shape:
+    :return:
+    """
     length = epls.shape[0]
     Y = image_shape[0] + 1
 
@@ -242,6 +344,18 @@ def get_coordinates_from_line(epls, image_shape):
 
 
 def estimate_homography(image_1, image_2, matches, keypoints_1, keypoints_2, N, t, good_enough):
+    """
+    Estimates the homography between two images.
+    :param image_1:
+    :param image_2:
+    :param matches:
+    :param keypoints_1:
+    :param keypoints_2:
+    :param N:
+    :param t:
+    :param good_enough:
+    :return:
+    """
     best_model, points, points_ = ransac(N, matches, keypoints_1, keypoints_2, t, estimator="baseline_homography")
 
     # im_matches = cv.drawMatches(image_1, kp_des_1[0], image_2, kp_des_2[0], matches[0:8], None,
@@ -264,6 +378,13 @@ def estimate_homography(image_1, image_2, matches, keypoints_1, keypoints_2, N, 
 
 
 def fit_model_to_sample(keypoints_1, keypoints_2):
+    """
+    Calculates the Homography H. Supposedly not important for the assignment. Implemented because of exercise 3 point
+    4 "Perform RANSAC to estimate the homography between images."
+    :param keypoints_1:
+    :param keypoints_2:
+    :return:
+    """
     print(keypoints_1.shape, keypoints_1.shape)
     # Fit model to sample
     A = np.zeros((0, 8))
@@ -291,6 +412,12 @@ def fit_model_to_sample(keypoints_1, keypoints_2):
 
 
 def experiments_exercise_3(image_data):
+    """
+    Performs the experiments for exercise 3. After loading two consecutive images, keypoints and descriptors are
+    estimated with which the fundamental matrix F and epipolar lines are determined.
+    :param image_data: All image data
+    :return:
+    """
     image_1 = image_data[0]
     image_2 = image_data[1]
     image_size = image_1.shape
@@ -300,10 +427,9 @@ def experiments_exercise_3(image_data):
     keypoints_1_np = np.int32(cv.KeyPoint.convert(keypoints_1))
     keypoints_2_np = np.int32(cv.KeyPoint.convert(keypoints_2))
     keypoints_1_np, keypoints_2_np = get_matching_points(matches, keypoints_1_np, keypoints_2_np)
-    points, points_ = make_homogeneous(keypoints_1_np), make_homogeneous(keypoints_2_np)
 
-    # im_matches = cv.drawMatches(image_1, keypoints_1, image_2, keypoints_2, matches[:100], None,
-    #                             flags=cv.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+    # Points: (x, y) and Points_: (x', y') (see Assignment)
+    points, points_ = make_homogeneous(keypoints_1_np), make_homogeneous(keypoints_2_np)
 
     F, points, points_ = ransac(100, matches, points, points_, 0.005, estimator="norm_eight_point")
     # F, points, points_ = estimate_fundamental_matrix(matches, points, points_)
@@ -338,6 +464,10 @@ def experiments_exercise_3(image_data):
     pt1_l, pt2_l = get_coordinates_from_line(l_ls, image_size)
     pt1_r, pt2_r = get_coordinates_from_line(l_rs, image_size)
 
+    # Code for visualizing the matches
+    # im_matches = cv.drawMatches(image_1, keypoints_1, image_2, keypoints_2, matches[:100], None,
+    #                             flags=cv.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+
     for k in np.arange(points.shape[0]):
         color = tuple(np.random.randint(0, 255, 3).tolist())
         cv.circle(image_1, (int(points[k][0]), int(points[k][1])), 4, (0, 255, 0), -1)
@@ -356,10 +486,15 @@ def experiments_exercise_3(image_data):
         cv.imshow("kp 2", image_2)
         # cv.imshow("matches", im_matches)
 
-    # estimate_homography(image_1, image_2, matches, keypoints_1_np, keypoints_2_np, 1000, 3, 400)
+    # estimate_homography(image_1, image_2, matches, keypoints_1_np, keypoints_2_np, 1000, 3, 400)s
 
 
-def chaining(image_data, t):
+def chaining(image_data):
+    """
+    Builds up the point view matrix by chaining found keypoints together
+    :param image_data:
+    :return:
+    """
     number_of_images = len(image_data)
     keypoints_upper_bound = 500 * 50
     point_view_matrix = np.zeros((number_of_images, 2, keypoints_upper_bound))
@@ -448,6 +583,15 @@ def chaining(image_data, t):
 
 
 def match_keypoints_and_descriptors(matches, keypoints_1, keypoints_2, descriptors_1, descriptors_2):
+    """
+    Aligns indices of keypoints and descriptors
+    :param matches:
+    :param keypoints_1:
+    :param keypoints_2:
+    :param descriptors_1:
+    :param descriptors_2:
+    :return:
+    """
     image1_indices = [match.queryIdx for match in matches]
     image2_indices = [match.trainIdx for match in matches]
     keypoints_1, descriptors_1 = keypoints_1[image1_indices], descriptors_1[image1_indices]
@@ -456,15 +600,22 @@ def match_keypoints_and_descriptors(matches, keypoints_1, keypoints_2, descripto
     return keypoints_1, keypoints_2, descriptors_1, descriptors_2
 
 
+def visualize_point_view_matrix(point_view_matrix):
+    """
+    Transforms point view matrix into binary representation and visualizes the trajectories.
+    :param point_view_matrix: Previously calculated point view matrix
+    """
+    binary_pvm = point_view_matrix > 0
+    plt.imshow(binary_pvm, aspect=25)
+    plt.savefig("Chaining_result.png", dpi=300)
+    plt.show()
+
+
 if __name__ == "__main__":
     # image_data = [cv.imread(image) for image in sorted(glob.glob("Data/House/*.jpg"))]
     image_data = [cv.imread(image) for image in sorted(glob.glob("Data/House/*.png"))]
 
     # experiments_exercise_3(image_data)
 
-    point_view_matrix = chaining(image_data, 40)
-    binary_pvm = point_view_matrix > 0
-
-    plt.imshow(binary_pvm, aspect=25)
-    plt.savefig("Chaining_result.png", dpi=300)
-    plt.show()
+    point_view_matrix = chaining(image_data)
+    visualize_point_view_matrix(point_view_matrix)

@@ -6,7 +6,7 @@ from argparse import ArgumentParser
 
 
 def calc_icp(base_points, target_points, base_normals=None, target_normals=None, base_colors=None,
-             sampling_tech="All", sample_size=None, tree_method='pynndescent'):
+             sampling_tech="All", sample_size=None, tree_method='ckdtree'):
     """
     Performs the ICP algorithm ...
     :param base_points: point cloud to be aligned
@@ -20,7 +20,7 @@ def calc_icp(base_points, target_points, base_normals=None, target_normals=None,
     :param tree_method
     :return:
     """
-    assert(tree_method in ['kdtree', 'ckdtree', 'pynndescent'])
+    assert (tree_method in ['kdtree', 'ckdtree', 'pynndescent'])
 
     if base_normals is not None:
         if base_colors is not None:
