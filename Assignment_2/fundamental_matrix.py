@@ -3,7 +3,7 @@ import cv2 as cv
 import glob
 from scipy.linalg import null_space
 from matplotlib import pyplot as plt
-from scipy import spatial
+from structure_from_motion import structure_from_motion
 
 
 # Since we use Python, instead of using VLFeat we perform feature matching with ORB and BFMatcher. The corresponding
@@ -238,7 +238,16 @@ def find_matches(image_1, image_2, return_descriptors=False):
     """
     # Initiate ORB detector and BFMatcher
     orb = cv.ORB_create()
-    bf = cv.BFMatcher(cv.NORM_HAMMING, crossCheck=True)
+    # bf = cv.BFMatcher(cv.NORM_HAMMING2, crossCheck=True)
+
+    FLANN_INDEX_LSH = 6
+    index_params = dict(algorithm=FLANN_INDEX_LSH,
+                        table_number=6,  # 12
+                        key_size=12,  # 20
+                        multi_probe_level=1)  # 2
+
+    search_params = dict(checks=2000)  # or pass empty dictionary
+    flann = cv.FlannBasedMatcher(index_params, search_params)
 
     # find the keypoints with ORB
     keypoints_1, descriptors_1 = orb.detectAndCompute(image_1, None)
@@ -246,7 +255,7 @@ def find_matches(image_1, image_2, return_descriptors=False):
 
     # Match descriptors.
     # queryIdx refers to keypoints_1, trainIdx refers to keypoints_2
-    _matches = bf.match(descriptors_1, descriptors_2)
+    _matches = flann.match(descriptors_1, descriptors_2)
 
     if not return_descriptors:
         # Sort them in the order of their distance
@@ -501,8 +510,17 @@ def chaining(image_data):
     information_previous_iteration = None
     number_saved_keypoints = 0
 
+    FLANN_INDEX_LSH = 6
+    index_params = dict(algorithm=FLANN_INDEX_LSH,
+                        table_number=6,  # 12
+                        key_size=12,  # 20
+                        multi_probe_level=1)  # 2
+
+    search_params = dict(checks=2000)  # or pass empty dictionary
+    flann = cv.FlannBasedMatcher(index_params, search_params)
+
     # Initiate BFMatcher
-    bf = cv.BFMatcher(cv.NORM_HAMMING, crossCheck=True)
+    # bf = cv.BFMatcher(cv.NORM_HAMMING2, crossCheck=True)
 
     for i in np.arange(0, number_of_images - 1):
         print("Iteration", i)
@@ -530,23 +548,31 @@ def chaining(image_data):
 
             keypoints_previous, descriptors_previous, indices_previous = information_previous_iteration
 
-            # print("Loose points?")
-            # print(len(indices_previous))
-            # print(np.unique(indices_previous).shape[0])
+            print("Loose points?")
+            print(len(indices_previous))
+            print(np.unique(indices_previous).shape[0])
 
-            _matches = bf.match(descriptors_1, descriptors_previous)
+            _matches = flann.match(descriptors_1, descriptors_previous)
             _matches = sorted(_matches, key=lambda x: x.distance)
-            survived_indices = [match.queryIdx for match in _matches]
-            survived_pvm_indices = [match.trainIdx for match in _matches]
+            survived_indices = np.unique([match.queryIdx for match in _matches])
+            survived_pvm_indices, unique_indices = np.unique([match.trainIdx for match in _matches], return_index=True)
+            survived_indices = survived_indices[unique_indices]
+            # current_pvm_indices = indices_previous[np.where(survived_pvm_indices < len(indices_previous))[0]]
             current_pvm_indices = indices_previous[survived_pvm_indices]
 
-            for j in np.arange(len(current_pvm_indices)):
+            print("How many survived keypoints")
+            print(len(survived_indices))
+            print(np.unique(survived_indices).shape[0])
+            print(len(survived_pvm_indices))
+            print(np.unique(current_pvm_indices).shape[0])
+
+            for j in np.arange(len(survived_indices)):
                 pvm_idx = current_pvm_indices[j]
                 keypoint_idx = survived_indices[j]
                 point_view_matrix[i][:2, pvm_idx] = keypoints_1_np[keypoint_idx].T
 
-            # print("AFTER KP: Number of simultaneous keypoints")
-            # print(np.where(point_view_matrix[i][1] > 0)[0].shape[0])
+            print("AFTER KP: Number of simultaneous keypoints")
+            print(np.where(point_view_matrix[i][1] > 0)[0].shape[0])
 
             new_keypoints = np.delete(keypoints_1_np, survived_indices, axis=0)
             number_additional_kp = new_keypoints.shape[0]
@@ -554,26 +580,26 @@ def chaining(image_data):
             for j, index in enumerate(new_indices):
                 point_view_matrix[i][:2, index] = new_keypoints[j].T
 
-            # print("AFTER NEW KP: Number of simultaneous keypoints")
-            # print(np.where(point_view_matrix[i][1] > 0)[0].shape[0])
-            # print("How many official new keypoints")
-            # print(number_additional_kp)
+            print("AFTER NEW KP: Number of simultaneous keypoints")
+            print(np.where(point_view_matrix[i][1] > 0)[0].shape[0])
+            print("How many official new keypoints")
+            print(number_additional_kp)
 
             number_saved_keypoints += number_additional_kp
 
             indices_next_iteration = np.append(current_pvm_indices, new_indices, axis=0)
 
-            # print("How many inofficial new keypoints")
-            # print(len(matches) - len(survived_indices) == number_additional_kp)
+            print("How many inofficial new keypoints")
+            print(len(matches) - len(survived_indices) == number_additional_kp)
 
             print("END: Number of simultaneous keypoints")
             print(np.where(point_view_matrix[i][1] > 0)[0].shape[0])
-            # print("indices for next iteration")
-            # print(indices_next_iteration.shape[0])
+            print("indices for next iteration")
+            print(indices_next_iteration.shape[0])
 
         else:
             point_view_matrix[i][:2, :keypoints_1_np.shape[0]] = keypoints_1_np.T
-            number_saved_keypoints += len(matches)
+            number_saved_keypoints += keypoints_1_np.shape[0]
             indices_next_iteration = np.arange(keypoints_1_np.shape[0])
 
         information_previous_iteration = keypoints_2_np, descriptors_2, indices_next_iteration
@@ -617,5 +643,9 @@ if __name__ == "__main__":
 
     # experiments_exercise_3(image_data)
 
-    point_view_matrix = chaining(image_data)
-    visualize_point_view_matrix(point_view_matrix)
+    pvm = np.loadtxt("PointViewMatrix.txt")
+
+    # point_view_matrix = chaining(image_data)
+    # visualize_point_view_matrix(point_view_matrix)
+
+    structure_from_motion(pvm, 3)
