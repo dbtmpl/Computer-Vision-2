@@ -11,15 +11,16 @@ from matplotlib import pyplot as plt
 # (https://docs.opencv.org/master/dc/dc3/tutorial_py_matcher.html)
 
 
-def ransac(N, matches, keypoints_1, keypoints_2, t, estimator="norm_eight_point"):
+def ransac(N, keypoints_1, keypoints_2, t, estimator="norm_eight_point", verbose=True):
     """
     Performs the RANSAC in order to estimate the fundamental matrix F.
     (Or if estimator="baseline_homography", we calculate the homography between the two images).
     :param N: Number of iterations
-    :param matches: Matches found between both images
     :param keypoints_1: Corresponding keypoints in the first image
     :param keypoints_2: Corresponding keypoints in the second image
     :param t: Threshold for nearest neighbor estimation
+    :param estimator:
+    :param verbose:
 
     :return: Best transformation
     """
@@ -39,8 +40,9 @@ def ransac(N, matches, keypoints_1, keypoints_2, t, estimator="norm_eight_point"
         return None
 
     for n in np.arange(N):
-        print("Current Iteration", n)
-        sample = np.random.choice(len(matches), sample_size, replace=False)
+        if verbose:
+            print("Current Iteration", n)
+        sample = np.random.choice(keypoints_1.shape[0], sample_size, replace=False)
         sample_kp_im1 = keypoints_1[sample]
         sample_kp_im2 = keypoints_2[sample]
         if estimator == "baseline_homography":
@@ -55,7 +57,8 @@ def ransac(N, matches, keypoints_1, keypoints_2, t, estimator="norm_eight_point"
 
         inliers = estimate_inliers(F, keypoints_1, keypoints_2, t)
         number_inliers = np.where(inliers)[0].shape[0]
-        print("Number Inliers", number_inliers)
+        if verbose:
+            print("Number Inliers", number_inliers)
 
         if number_inliers > best_fit:
             best_fit = number_inliers
@@ -75,7 +78,8 @@ def ransac(N, matches, keypoints_1, keypoints_2, t, estimator="norm_eight_point"
             # if number_inliers >= len(matches):
             #     return best_model, keypoints_1, keypoints_2
 
-    print("Best number of inliers:", best_fit)
+    if verbose:
+        print("Best number of inliers:", best_fit)
     return best_model, keypoints_1, keypoints_2
 
 
@@ -439,7 +443,7 @@ def experiments_exercise_3(image_data):
     # Points: (x, y) and Points_: (x', y') (see Assignment)
     points, points_ = make_homogeneous(keypoints_1_np), make_homogeneous(keypoints_2_np)
 
-    F, points, points_ = ransac(100, matches, points, points_, 0.005, estimator="norm_eight_point")
+    F, points, points_ = ransac(100, points, points_, 0.005, estimator="norm_eight_point")
     # F, points, points_ = estimate_fundamental_matrix(matches, points, points_)
 
     # OPENCV functions for testing purposes

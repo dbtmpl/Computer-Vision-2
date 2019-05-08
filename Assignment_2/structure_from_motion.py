@@ -1,7 +1,5 @@
 import numpy as np
 from procrustes import procrustes
-from mpl_toolkits.mplot3d import Axes3D
-import matplotlib.pyplot as plt
 import open3d as o3d
 
 
@@ -46,15 +44,17 @@ def structure_from_motion(point_view_matrix, block_size):
                 model[dense_idx, :] = Z
 
     model = model[world_idx, :]
-    model = model[model[:, 2] > -1, :]  # Hacky filter, sry
 
-    # # Plot
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-    x, y, z = model[:, 0], model[:, 1],model[:, 2]
-    ax.scatter(x, y, z, c='r', marker='o')
-    ax.view_init(20, 00)
-    plt.show()
+    return model
+
+
+def main():
+    pvm = np.loadtxt('PointViewMatrix.txt')
+    model = structure_from_motion(pvm, 3)
+
+    # Plot the result
+    model = model[model[:, 2] > -1, :]  # Hacky filter, sry
+    model[:, 2] *= 0.5 * np.abs(model[:, 0]).max() / np.abs(model[:, 2]).max()  # hacky z-scaling , srysry
 
     cloud = o3d.PointCloud()
     cloud.points = o3d.Vector3dVector(model)
@@ -62,6 +62,4 @@ def structure_from_motion(point_view_matrix, block_size):
 
 
 if __name__ == '__main__':
-    pvm = np.loadtxt('PointViewMatrix.txt')
-    structure_from_motion(pvm, 3)
-
+    main()
