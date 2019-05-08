@@ -25,7 +25,7 @@ def structure_from_motion(point_view_matrix, block_size):
             D = pvm_rows[:, dense_idx]
             D = D - D.mean(axis=1)[:, None]
 
-            U, W, Vt = np.linalg.svd(D)
+            _, W, Vt = np.linalg.svd(D)
             V = Vt.T
 
             W = np.diag(W)[:3, :3]
