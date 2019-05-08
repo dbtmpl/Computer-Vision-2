@@ -4,29 +4,38 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 from glob import glob
 from structure_from_motion import structure_from_motion
+from math import *
 
 
 def chaining(images):
     n_images = len(images)
-    pvm = np.zeros((n_images * 2, n_images * 20))  # The Point view matrix
+    pvm = np.zeros((n_images * 2, n_images * 40))  # The Point view matrix
 
-    orb = cv2.ORB_create(nfeatures=2000, nlevels=1, scaleFactor=1.2, patchSize=25, edgeThreshold=25)
-    bf = cv2.BFMatcher(cv2.NORM_HAMMING2, crossCheck=True)
+    orb = cv2.ORB_create(nfeatures=1000, nlevels=2, scaleFactor=1.2, patchSize=22, edgeThreshold=22)
+    bf = cv2.BFMatcher(cv2.NORM_HAMMING)
 
-    def cast_points(xl):
-        return [(int(x.pt[0]), int(x.pt[1])) for x in xl]
+    def spatial_thres(match_list):
+        def _cast(x):
+            return int(x.pt[0]), int(x.pt[1])
+        mind = 10e5
+        for match in match_list:
+            qry, tgt = _cast(last_points[match.queryIdx]), _cast(points[match.trainIdx])
+            eucl = sqrt((qry[0] - tgt[0])**2 + (qry[1] - tgt[1])**2)
+            if eucl < mind:
+                mind = eucl
+                left, right = qry, tgt
+        return left, right
 
     last_points, last_feats = orb.detectAndCompute(images[-1], None)
-
     pivot, last_right_indices = 0, {}
     for i, image in enumerate(tqdm(images)):
         points, feats = orb.detectAndCompute(image, None)
         # plot_points(image, points)
 
-        matches = bf.match(last_feats, feats)
+        match_lists = bf.knnMatch(last_feats, feats, k=4)
+        matches = map(spatial_thres, match_lists)
         new_right_indices = {}
-        for m in matches:
-            left_pt, right_pt = cast_points([last_points[m.queryIdx], points[m.trainIdx]])
+        for left_pt, right_pt in matches:
             idx = last_right_indices.get(left_pt, pivot)
             if left_pt not in last_right_indices:
                 pivot += 1
@@ -40,7 +49,7 @@ def chaining(images):
             pvm = np.hstack((pvm, np.zeros((n_images * 2, (n_images - i) * 40))))
 
     # Filter PVM
-    cols = (pvm > 0).sum(axis=0) > 10
+    cols = (pvm > 0).sum(axis=0) > 20
     pvm = pvm[:, cols]
     return pvm
 
@@ -76,7 +85,8 @@ def plot_pvm_points(image, pvm):
 def main():
     images = [cv2.imread(image) for image in sorted(glob("Data/House/*.png"))]
     pvm = chaining(images)
-    # plot_pvm_points(images[0], pvm)
+    #plot_pvm(pvm)
+    #plot_pvm_points(images[0], pvm)
     structure_from_motion(pvm, 3)
 
 
