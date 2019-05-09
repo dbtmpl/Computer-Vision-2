@@ -157,7 +157,7 @@ def find_epipoles(F):
     return np.asarray(null_space(F.T)), np.asarray(null_space(F))
 
 
-def estimate_fundamental_matrix(matches, keypoints_1, keypoints_2):
+def estimate_fundamental_matrix(matches, keypoints_1, keypoints_2, normalized=True):
     """
     Estimates fundamental matrix given two sets of keypoints and their matches without using RANSAC.
     :param matches:
@@ -168,7 +168,10 @@ def estimate_fundamental_matrix(matches, keypoints_1, keypoints_2):
     sample = np.random.choice(len(matches), 8, replace=False)
     points = keypoints_1[sample]
     points_ = keypoints_2[sample]
-    return normalized_eight_point_algorithm(points, points_), points, points_
+    if normalized:
+        return normalized_eight_point_algorithm(points, points_), keypoints_1, keypoints_2
+    else:
+        return eight_point_algorithm(points, points_), keypoints_1, keypoints_2
 
 
 def normalized_eight_point_algorithm(keypoints_1, keypoints_2):
@@ -200,7 +203,6 @@ def normalized_eight_point_algorithm(keypoints_1, keypoints_2):
     F_norm = eight_point_algorithm(keypoints_1_norm, keypoints_2_norm)
 
     return mT_.T @ F_norm @ mT
-    # return F_norm
 
 
 def eight_point_algorithm(keypoints_1, keypoints_2):
@@ -241,16 +243,7 @@ def find_matches(image_1, image_2, return_descriptors=False):
     """
     # Initiate ORB detector and BFMatcher
     orb = cv.ORB_create()
-    # bf = cv.BFMatcher(cv.NORM_HAMMING2, crossCheck=True)
-
-    FLANN_INDEX_LSH = 6
-    index_params = dict(algorithm=FLANN_INDEX_LSH,
-                        table_number=6,  # 12
-                        key_size=12,  # 20
-                        multi_probe_level=1)  # 2
-
-    search_params = dict(checks=2000)  # or pass empty dictionary
-    flann = cv.FlannBasedMatcher(index_params, search_params)
+    bf = cv.BFMatcher(cv.NORM_HAMMING2, crossCheck=True)
 
     # find the keypoints with ORB
     keypoints_1, descriptors_1 = orb.detectAndCompute(image_1, None)
@@ -258,7 +251,7 @@ def find_matches(image_1, image_2, return_descriptors=False):
 
     # Match descriptors.
     # queryIdx refers to keypoints_1, trainIdx refers to keypoints_2
-    _matches = flann.match(descriptors_1, descriptors_2)
+    _matches = bf.match(descriptors_1, descriptors_2)
 
     if not return_descriptors:
         # Sort them in the order of their distance
@@ -324,10 +317,7 @@ def check_fundamental_matrix(F, keypoints_1, keypoints_2, threshold):
     :return:
     """
     zeros_hopefully = np.asarray([keypoints_2[i].T @ F @ keypoints_1[i] for i in np.arange(keypoints_1.shape[0])])
-    print(zeros_hopefully.shape)
-    print(zeros_hopefully)
     indices = zeros_hopefully < threshold
-    print(np.where(indices)[0].shape[0])
     return keypoints_1[indices], keypoints_2[indices]
 
 
@@ -345,12 +335,12 @@ def get_coordinates_from_line(epls, image_shape):
     # Point (x, -1)
     pt1_x = np.asarray([(epls[i][1] - epls[i][2]) / epls[i][0] for i in np.arange(epls.shape[0])])
     pt1_y = np.ones((length, 1)) * -1
-    pt1 = np.hstack((pt1_x.reshape(length, 1), pt1_y.reshape(length, 1)))
+    pt1 = np.hstack((pt1_x.reshape(length, 1).astype(np.int64), pt1_y.reshape(length, 1).astype(np.int64)))
 
     # Point (x, Y+1)
     pt2_x = np.asarray([(epls[i][1] * -Y - epls[i][2]) / epls[i][0] for i in np.arange(epls.shape[0])])
     pt2_y = np.ones((length, 1)) * Y
-    pt2 = np.hstack((pt2_x.reshape(length, 1), pt2_y.reshape(length, 1)))
+    pt2 = np.hstack((pt2_x.reshape(length, 1).astype(np.int64), pt2_y.reshape(length, 1).astype(np.int64)))
 
     return pt1, pt2
 
@@ -423,13 +413,16 @@ def fit_model_to_sample(keypoints_1, keypoints_2):
     return np.append(f, np.asarray([[1]]), axis=0).reshape((3, 3))
 
 
-def experiments_exercise_3(image_data):
+def experiments_exercise_3(image_data, run_experiments=False):
     """
     Performs the experiments for exercise 3. After loading two consecutive images, keypoints and descriptors are
     estimated with which the fundamental matrix F and epipolar lines are determined.
     :param image_data: All image data
     :return:
     """
+
+    np.random.seed(0)
+
     image_1 = image_data[0]
     image_2 = image_data[1]
     image_size = image_1.shape
@@ -441,66 +434,203 @@ def experiments_exercise_3(image_data):
     keypoints_1_np, keypoints_2_np = get_matching_points(matches, keypoints_1_np, keypoints_2_np)
 
     # Points: (x, y) and Points_: (x', y') (see Assignment)
-    points, points_ = make_homogeneous(keypoints_1_np), make_homogeneous(keypoints_2_np)
+    keypoints_1_np, keypoints_2_np = make_homogeneous(keypoints_1_np), make_homogeneous(keypoints_2_np)
 
-    F, points, points_ = ransac(100, points, points_, 0.005, estimator="norm_eight_point")
-    # F, points, points_ = estimate_fundamental_matrix(matches, points, points_)
+    # Compute average error for experiments
+    if run_experiments:
+        # (0): Plain eight point alg; (1): Norm eight-point alg; for both idx 0: errors, idx 1: fundamental matrix
+        # (2): Norm eight-point w. Ransac, idx 0: errors, idx 1: fundamental matrix, idx 2: number of inliers
+        overall_errors = [([], []), ([], []), ([], [], [])]
 
-    # OPENCV functions for testing purposes
-    # F, _ = cv.findFundamentalMat(points, points_, cv.FM_LMEDS)
-    # l_ls = cv.computeCorrespondEpilines(points_.reshape(-1, 1, 2), 2, F)
-    # l_ls = l_ls.reshape(-1, 3)
-    # l_rs = cv.computeCorrespondEpilines(points.reshape(-1, 1, 2), 2, F)
-    # l_rs = l_rs.reshape(-1, 3)
+        # False: Estimate fundamental matrix without normalization
+        # True: Estimate fundamental matrix with normalization
+        # "Ransac": Use Ransac and normalization to estimate fundamental matrix
+        condition = [False, True, "Ransac"]
+        save_description = ["eight", "norm_eight", "ransac"]
+        plot_description = ['Eight-point algorithm', 'Normalized Eight-point algorithm',
+                            'Norm. Eight-point alg. with Ransac']
 
-    print("Check Fundamental Matrix")
-    points, points_ = check_fundamental_matrix(F, points, points_, 0.0001)
+        for i, cond in enumerate(condition):
+            img1 = np.copy(image_1)
+            img2 = np.copy(image_2)
+            for j in np.arange(100):
+                if cond == "Ransac":
+                    F, points, points_ = ransac(100, keypoints_1_np, keypoints_2_np, 0.05, estimator="norm_eight_point")
+                else:
+                    F, points, points_ = estimate_fundamental_matrix(matches, keypoints_1_np, keypoints_2_np, cond)
 
-    l_ls, l_rs = find_epipolar_lines(F, points, points_)
-    le, re = find_epipoles(F)
+                l_ls, l_rs = find_epipolar_lines(F, points, points_)
+                average_error = calc_average_error(l_ls, l_rs, points, points_)
+                overall_errors[i][0].append(average_error)
+                overall_errors[i][1].append(F)
 
-    print("Epipolar lines check")
-    print(l_ls[0].T @ points[0])
-    print(l_rs[0].T @ points_[0])
+            best_idx = np.argmin(overall_errors[i][0])
+            F = overall_errors[i][1][best_idx]
 
-    print("Epipole check")
-    print(points_[0] @ F @ le)
-    print(re.T @ F @ points[0])
+            l_ls, l_rs = find_epipolar_lines(F, keypoints_1_np, keypoints_2_np)
+            pt1_l, pt2_l = get_coordinates_from_line(l_ls, image_size)
+            pt1_r, pt2_r = get_coordinates_from_line(l_rs, image_size)
 
-    print("Epipole")
-    le2d = le[0] / le[2], le[1] / le[2]
-    re2d = re[0] / re[2], re[1] / re[2]
-    print(le2d)
-    print(re2d)
+            # cope with overflow errors
+            ii32 = np.iinfo(np.int32)
+            min_int = ii32.min
+            max_int = ii32.max
 
-    pt1_l, pt2_l = get_coordinates_from_line(l_ls, image_size)
-    pt1_r, pt2_r = get_coordinates_from_line(l_rs, image_size)
+            for k in np.arange(points.shape[0]):
+                ptl1_x, ptl1_y = pt1_l[k][0], pt1_l[k][1]
+                ptl2_x, ptl2_y = pt2_l[k][0], pt2_l[k][1]
+                ptr1_x, ptr1_y = pt1_r[k][0], pt1_r[k][1]
+                ptr2_x, ptr2_y = pt2_r[k][0], pt2_r[k][1]
 
-    # Code for visualizing the matches
-    # im_matches = cv.drawMatches(image_1, keypoints_1, image_2, keypoints_2, matches[:100], None,
-    #                             flags=cv.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+                if not all(min_int <= i <= max_int for i in
+                           [ptl1_x, ptl1_y, ptl2_x, ptl2_y, ptr1_x, ptr1_y, ptr2_x, ptr2_y]):
+                    continue
 
-    for k in np.arange(points.shape[0]):
-        color = tuple(np.random.randint(0, 255, 3).tolist())
-        cv.circle(image_1, (int(points[k][0]), int(points[k][1])), 4, (0, 255, 0), -1)
-        cv.circle(image_2, (int(points_[k][0]), int(points_[k][1])), 4, (0, 255, 0), -1)
+                color = tuple(np.random.randint(0, 255, 3).tolist())
+                cv.circle(img1, (int(points[k][0]), int(points[k][1])), 4, (0, 255, 0), -1)
+                cv.circle(img2, (int(points_[k][0]), int(points_[k][1])), 4, (0, 255, 0), -1)
 
-        cv.line(image_1, (int(pt1_l[k][0]), int(pt1_l[k][1])), (int(pt2_l[k][0]), int(pt2_l[k][1])), color,
-                thickness=1, lineType=8)
-        cv.line(image_2, (int(pt1_r[k][0]), int(pt1_r[k][1])), (int(pt2_r[k][0]), int(pt2_r[k][1])), color,
-                thickness=1, lineType=8)
+                cv.line(img1, (pt1_l[k][0], pt1_l[k][1]), (pt2_l[k][0], pt2_l[k][1]), color, thickness=1, lineType=8)
+                cv.line(img2, (pt1_r[k][0], pt1_r[k][1]), (pt2_r[k][0], pt2_r[k][1]), color, thickness=1, lineType=8)
 
-    # cv.circle(image_1, (int(le2d[0]), int(le2d[0])), 4, (255, 255, 0), -1)
-    # cv.circle(image_2, (int(re2d[0]), int(re2d[0])), 4, (255, 255, 0), -1)
+            f = plt.figure(dpi=400)
+            f.suptitle("Epipolar lines estimated with the \n {}".format(plot_description[i]), fontweight='bold',
+                       fontsize=16)
+            ax1 = f.add_subplot(121)
+            ax2 = f.add_subplot(122)
+            ax1.set_title('Left image')
+            ax1.imshow(img1)
+            ax2.set_title('Right image')
+            ax2.imshow(img2)
+            plt.savefig("Plots/Epipolar_lines_plot_{}.png".format(save_description[i]), dpi=300)
+            plt.show()
 
-    while cv.waitKey(30):
-        cv.imshow("kp 1", image_1)
-        cv.imshow("kp 2", image_2)
-        # cv.imshow("matches", im_matches)
+        sorted_error_eight = sorted(overall_errors[0][0], reverse=True)
+        sorted_error_normeight = sorted(overall_errors[1][0], reverse=True)
+        sorted_error_ransac = sorted(overall_errors[2][0], reverse=True)
 
-    # estimate_homography(image_1, image_2, matches, keypoints_1_np, keypoints_2_np, 1000, 3, 400)s
+        f, axs = plt.subplots(1, 3, constrained_layout=True, figsize=(10, 6))
+        f.suptitle("Average Error over the different approaches", fontweight='bold', fontsize=18)
+
+        ep = axs[0].plot(sorted_error_eight, 'm')
+        nep = axs[1].plot(sorted_error_normeight, 'c')
+        rans = axs[2].plot(sorted_error_ransac, 'g')
+
+        plt.legend(handles=[ep[0], nep[0], rans[0]],
+                   labels=['Eight-point algorithm', 'Normalized Eight-point algorithm',
+                           'Norm. Eight-point alg. with Ransac'], prop={'size': 12})
+
+        plt.savefig("Plots/Average_error_results.png", dpi=300)
+        plt.show()
+
+        print("----------------------------------------------------------")
+        print("-------------------------RESULTS--------------------------")
+
+        print("Eight point:")
+        print("min average error", sorted_error_eight[-1])
+        print("avg average error", np.mean(sorted_error_eight))
+        print("max average error", sorted_error_eight[0])
+        print("Norm. Eight-point:")
+        print("min average error", sorted_error_normeight[-1])
+        print("avg average error", np.mean(sorted_error_normeight))
+        print("max average error", sorted_error_normeight[0])
+        print("RANSAC:", sorted_error_ransac[-1])
+        print("min average error", sorted_error_ransac[-1])
+        print("avg average error", np.mean(sorted_error_ransac))
+        print("max average error", sorted_error_ransac[0])
+        print("----------------------------------------------------------")
+        print("----------------------------------------------------------")
+
+    # Normal estimation for testing with visualization afterwards
+    else:
+        F, points, points_ = ransac(100, points, points_, 0.05, estimator="norm_eight_point")
+        # F, points, points_ = estimate_fundamental_matrix(matches, points, points_, False)
+        # F, points, points_ = estimate_fundamental_matrix(matches, points, points_, True)
+
+        print("Check Fundamental Matrix")
+        points, points_ = check_fundamental_matrix(F, points, points_, 0.000001)
+
+        l_ls, l_rs = find_epipolar_lines(F, points, points_)
+        le, re = find_epipoles(F)
+
+        print("Epipolar lines check")
+        print(l_ls[0].T @ points[0])
+        print(l_rs[0].T @ points_[0])
+
+        print("Epipole check")
+        print(points_[0] @ F @ le)
+        print(re.T @ F @ points[0])
+
+        print("Epipole")
+        le2d = le[0] / le[2], le[1] / le[2]
+        re2d = re[0] / re[2], re[1] / re[2]
+        print(le2d)
+        print(re2d)
+
+        pt1_l, pt2_l = get_coordinates_from_line(l_ls, image_size)
+        pt1_r, pt2_r = get_coordinates_from_line(l_rs, image_size)
+
+        # Code for visualizing the matches
+        # im_matches = cv.drawMatches(image_1, keypoints_1, image_2, keypoints_2, matches[:100], None,
+        #                             flags=cv.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+
+        for k in np.arange(points.shape[0]):
+            color = tuple(np.random.randint(0, 255, 3).tolist())
+            cv.circle(image_1, (int(points[k][0]), int(points[k][1])), 4, (0, 255, 0), -1)
+            cv.circle(image_2, (int(points_[k][0]), int(points_[k][1])), 4, (0, 255, 0), -1)
+
+            cv.line(image_1, (pt1_l[k][0], pt1_l[k][1]), (pt2_l[k][0], pt2_l[k][1]), color, thickness=1, lineType=8)
+            cv.line(image_2, (pt1_r[k][0], pt1_r[k][1]), (pt2_r[k][0], pt2_r[k][1]), color, thickness=1, lineType=8)
+
+            # cv.line(image_1, (le2d[0], le2d[1]), (points[k][0], points[k][1]), color, thickness=1, lineType=8)
+            # cv.line(image_2, (re2d[0], re2d[1]), (points_[k][0], points_[k][1]), color,
+            #         thickness=1, lineType=8)
+
+        # cv.circle(image_1, (int(le2d[0]), int(le2d[0])), 4, (255, 255, 0), -1)
+        # cv.circle(image_2, (int(re2d[0]), int(re2d[0])), 4, (255, 255, 0), -1)
+
+        while cv.waitKey(30):
+            cv.imshow("kp 1", image_1)
+            cv.imshow("kp 2", image_2)
+            # cv.imshow("matches", im_matches)
+
+
+def calc_average_error(l_ls, l_rs, points, points_):
+    """
+    Calculates the average error (point – epipolar line distance) for run combining the errors for the left and right image
+    :param l_ls: Epipolar lines left image
+    :param l_rs: Epipolar lines right image
+    :param points: Points left image
+    :param points_: Points right image
+    :return: Average Error
+    """
+    errors = []
+    for i in np.arange(l_ls.shape[0]):
+        left_line, right_line = l_ls[i], l_rs[i]
+        left_point, right_point = points[i], points_[i]
+
+        left_error = shortest_distance(left_point, left_line[0], left_line[1], left_line[2])
+        right_error = shortest_distance(right_point, right_line[0], right_line[1], right_line[2])
+
+        errors.append(left_error)
+        errors.append(right_error)
+
+    return np.mean(np.asarray(errors))
+
+
+def shortest_distance(point, a, b, c):
+    """
+    Source: https://www.geeksforgeeks.org/perpendicular-distance-between-a-point-and-a-line-in-2-d/
+    :param x1:
+    :param y1:
+    :param a:
+    :param b:
+    :param c:
+    :return:
+    """
+    return abs((a * point[0] + b * point[1] + c)) / (np.sqrt(a * a + b * b))
 
 
 if __name__ == "__main__":
     image_data = [cv.imread(image) for image in sorted(glob.glob("Data/House/*.png"))]
-    # experiments_exercise_3(image_data)
+    experiments_exercise_3(image_data, run_experiments=True)
