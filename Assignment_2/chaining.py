@@ -113,7 +113,7 @@ def plot_model(model):
     model = model[model[:, 2] > -0.25, :]  # Hacky filter, sry
     model = model[model[:, 2] < 0.5, :]  # Hacky filter, sry
     x, y, z = model[:, 0], model[:, 1], model[:, 2]
-    z *= 5  # hacky z-scaling , srysry
+    #z *= 2  # hacky z-scaling , srysry
 
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
@@ -126,11 +126,12 @@ def main():
     parser.add_argument('--dist', type=int, default=20)
     parser.add_argument('--length', type=int, default=20)
     parser.add_argument('--steps', type=int, default=3)
+    parser.add_argument('--affinity', action='store_true')
     args = parser.parse_args()
 
     images = [cv2.imread(image) for image in sorted(glob("Data/House/*.png"))]
     pvm = chaining(images, use_ransac=args.ransac, dist_thres=args.dist, length_thres=args.length)
-    model = structure_from_motion(pvm, args.steps)
+    model = structure_from_motion(pvm, args.steps, False)
 
     plot_pvm(pvm)
     plot_pvm_points(images[0], pvm)

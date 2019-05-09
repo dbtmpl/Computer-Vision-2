@@ -9,7 +9,8 @@ def structure_from_motion(point_view_matrix, block_size, eliminate_affinity=Fals
     """
     
     :param point_view_matrix: 
-    :param block_size: 
+    :param block_size:
+    :param eliminate_affinity
     :return: 
     """
     m, n = int(point_view_matrix.shape[0] / 2), point_view_matrix.shape[1]
@@ -30,7 +31,7 @@ def structure_from_motion(point_view_matrix, block_size, eliminate_affinity=Fals
 
             W = np.sqrt(np.diag(W)[:3, :3])
             V = V[:, :3]
-            U = V[:, :3]
+            U = U[:, :3]
 
             S = W @ V.T
             S[0, :] = -S[0, :]
@@ -59,7 +60,7 @@ def structure_from_motion(point_view_matrix, block_size, eliminate_affinity=Fals
 
 def main():
     pvm = np.loadtxt('PointViewMatrix.txt')
-    model = structure_from_motion(pvm, 3, False)
+    model = structure_from_motion(pvm, 3, True)
     # Plot the result
     model = model[model[:, 2] > -1, :]  # Hacky filter, sry
 
