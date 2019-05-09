@@ -1,9 +1,11 @@
 import numpy as np
 from procrustes import procrustes
-import open3d as o3d
+import matplotlib.pyplot as plt
+import numpy.linalg as LA
+from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 unused import
 
 
-def structure_from_motion(point_view_matrix, block_size):
+def structure_from_motion(point_view_matrix, block_size, eliminate_affinity=False):
     """
     
     :param point_view_matrix: 
@@ -23,15 +25,22 @@ def structure_from_motion(point_view_matrix, block_size):
             D = pvm_rows[:, dense_idx]
             D = D - D.mean(axis=1)[:, None]
 
-            _, W, Vt = np.linalg.svd(D)
+            U, W, Vt = np.linalg.svd(D)
             V = Vt.T
 
-            W = np.diag(W)[:3, :3]
+            W = np.sqrt(np.diag(W)[:3, :3])
             V = V[:, :3]
+            U = V[:, :3]
 
-            S = np.sqrt(W) @ V.T
+            S = W @ V.T
             S[0, :] = -S[0, :]
             S[1, :] = -S[1, :]
+
+            if eliminate_affinity:
+                M = U @ W
+                L = LA.pinv(M) @ LA.pinv(M.T)
+                C = LA.cholesky(L)
+                S = LA.inv(C) @ S
 
             if not np.any(world_idx):
                 model[dense_idx, :] = S.T
@@ -50,15 +59,17 @@ def structure_from_motion(point_view_matrix, block_size):
 
 def main():
     pvm = np.loadtxt('PointViewMatrix.txt')
-    model = structure_from_motion(pvm, 3)
-
+    model = structure_from_motion(pvm, 3, False)
     # Plot the result
     model = model[model[:, 2] > -1, :]  # Hacky filter, sry
-    model[:, 2] *= 0.5 * np.abs(model[:, 0]).max() / np.abs(model[:, 2]).max()  # hacky z-scaling , srysry
 
-    cloud = o3d.PointCloud()
-    cloud.points = o3d.Vector3dVector(model)
-    o3d.draw_geometries([cloud])
+    x, y, z = model[:, 0], model[:, 1], model[:, 2]
+    z *= 0.5 * np.abs(x).max() / np.abs(z).max()  # hacky z-scaling , srysry
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    ax.scatter3D(x, y, z, c=z, cmap='summer')
+    plt.show()
 
 
 if __name__ == '__main__':
