@@ -96,7 +96,8 @@ class EnergyMin(nn.Module):
         self.delta = nn.Parameter(torch.zeros(shape_e))
         T = torch.eye(4)
         T[2, 3] = -500
-        T[1, 1] = -1
+        # does it help to rotate 180 degrees?
+        # T[1, 1] = -1
         self.T = nn.Parameter(T)
 
         self.mu_shape = torch.from_numpy(mean_shape)
@@ -114,7 +115,6 @@ class EnergyMin(nn.Module):
         g = torch.from_numpy(g).float()
 
         # p vector where the batch is expected to be in the first axis
-
         p3d = self.basis_shape @ (self.alpha * self.sigma_shape) \
               + self.basis_expr @ (self.delta * self.sigma_expr)
 
@@ -129,22 +129,27 @@ class EnergyMin(nn.Module):
         return loss
 
 
-def normalize_points(points):
+def normalize_points(points, given_min_max=None):
     npoints = points.shape[0]
     norm_points = np.zeros((0, npoints))
-    min_max = []
 
-    for i in np.arange(points.shape[1]):
-        _min, _max = np.min(points[:, i]), np.max(points[:, i])
-        norm_coords = (points[:, i] - _min) / (_max - _min)
-        norm_points = np.append(norm_points, norm_coords.reshape((1, npoints)), axis=0)
-        min_max.append((_min, _max))
+    if given_min_max is None:
+        min_max = []
+        for i in np.arange(points.shape[1]):
+            _min, _max = np.min(points[:, i]), np.max(points[:, i])
+            norm_coords = (points[:, i] - _min) / (_max - _min)
+            norm_points = np.append(norm_points, norm_coords.reshape((1, npoints)), axis=0)
+            min_max.append((_min, _max))
 
-    return norm_points.T, min_max
+        return norm_points.T, min_max
 
-    # m_points = (points - np.min(points))
-    # m = np.max(np.abs(m_points)) / 2
-    # return m_points / m
+    else:
+        for i in np.arange(points.shape[1]):
+            _min, _max = given_min_max[i]
+            norm_coords = (points[:, i] - _min) / (_max - _min)
+            norm_points = np.append(norm_points, norm_coords.reshape((1, npoints)), axis=0)
+
+        return norm_points.T, given_min_max
 
 
 def denormalize_points(points, min_max):
@@ -157,6 +162,33 @@ def denormalize_points(points, min_max):
         denorm_points = np.append(denorm_points, norm_coords.reshape((1, npoints)), axis=0)
 
     return denorm_points.T
+
+
+def find_corresponding_texture(points, image):
+    im_height, im_width, _ = image.shape
+
+    new_texture = np.zeros((0, 3))
+    out_of_bounds = []
+
+    for i, point in enumerate(points):
+        x, y = point[0] + 1e-2, point[1] + 1e-2
+        if y < 0 or y > im_height or x < 0 or x > im_width:
+            # Save indices of points that are outside the image, such that we may delete those later
+            out_of_bounds.append(i)
+            continue
+        x_low, x_high = int(np.floor(x)), int(np.ceil(x))
+        y_low, y_high = int(np.floor(y)), int(np.ceil(y))
+        p_x, p_y = (x - x_low) / (x_high - x_low), (y - y_low) / (y_high - y_low)
+
+        color_11, color_12, color_21, color_22 = image[y_low, x_low], image[y_low, x_high], \
+                                                 image[y_high, x_low], image[y_high, x_high]
+
+        hori_color_1, hori_color_2 = color_11 * (1 - p_x) + color_12 * p_x, color_21 * (1 - p_x) + color_22 * p_x
+        final_color = hori_color_1 * (1 - p_y) + hori_color_2 * p_y
+
+        new_texture = np.append(new_texture, final_color.reshape((1, 3)), axis=0)
+
+    return new_texture
 
 
 def main():
@@ -192,6 +224,12 @@ def main():
         basis_expr_fland
     )
 
+    print("P Matrix")
+    print(model.P)
+
+    print("V Matrix")
+    print(model.V)
+
     optimizer = torch.optim.Adam(model.parameters())
 
     points = mean_shape_fland + mean_expr_fland
@@ -199,10 +237,14 @@ def main():
     S = np.concatenate((points, np.ones((npoints, 1))), axis=1)
 
     whole_points = mean_shape + mean_expr
-    whole_S = np.concatenate((whole_points, np.ones((n_whole_points, 1))), axis=1)
+    whole_points_norm, min_max_w_points = normalize_points(whole_points, min_max_points)
+    whole_S = np.concatenate((whole_points_norm, np.ones((n_whole_points, 1))), axis=1)
+
+    whole_S_plot = np.concatenate((whole_points, np.ones((n_whole_points, 1))), axis=1)
 
     # Loading the target image
     img = dlib.load_rgb_image("faces/dan.jpg")
+    # img = dlib.load_rgb_image("faces/surprise.png")
     detector = dlib.get_frontal_face_detector()
     predictor = dlib.shape_predictor("Data/shape_predictor_68_face_landmarks.dat")
     dets = detector(img, 1)
@@ -219,34 +261,39 @@ def main():
     p = torch.from_numpy(S).float()
     whole_p = torch.from_numpy(whole_S).float()
 
+    whole_p_plot = torch.from_numpy(whole_S_plot).float()
+
     # p vector where the batch is expected to be in the first axis
     p3d = model.basis_shape @ (model.alpha * model.sigma_shape) \
           + model.basis_expr @ (model.delta * model.sigma_expr)
     p3d = p + torch.cat((p3d, torch.zeros(68, 1)), dim=1)
 
     # All alpha and gamma applied on all 3d points
-    whole_p3d = torch.from_numpy(basis_shape).float() @ (model.alpha * model.sigma_shape) \
-                + torch.from_numpy(basis_expr).float() @ (model.delta * model.sigma_expr)
-    whole_p3d = whole_p + torch.cat((whole_p3d, torch.zeros(n_whole_points, 1)), dim=1)
+    whole_p3d_base = torch.from_numpy(basis_shape).float() @ (model.alpha * model.sigma_shape) \
+                     + torch.from_numpy(basis_expr).float() @ (model.delta * model.sigma_expr)
+    whole_p3d = whole_p + torch.cat((whole_p3d_base, torch.zeros(n_whole_points, 1)), dim=1)
 
-    # # Projection
+    whole_p3d_plot = whole_p_plot + torch.cat((whole_p3d_base, torch.zeros(n_whole_points, 1)), dim=1)
+
+    # Projection
     p2d = (p3d @ model.V @ model.P @ model.T)[:, :2]
     p2d = denormalize_points(p2d.detach().numpy(), min_max_gt)
 
-    # p2d = (p3d @ model.T)[:, :2]
+    # projection all points
+    whole_p2d = (whole_p3d @ model.V @ model.P @ model.T)[:, :2]
+    whole_p2d = denormalize_points(whole_p2d.detach().numpy()[:, :2], min_max_gt)
+    # Exercise 5
+    new_texture = find_corresponding_texture(whole_p2d, img)
 
-    # p2d = (whole_p3d @ model.V @ model.P @ model.T)[:, :2][fland]
+    # whole_p3d = (whole_p3d @ model.V @ model.P @ model.T)[:, :3]
+    # whole_p3d = denormalize_points(whole_p3d.detach().numpy()[:, :3], min_max_w_points)
 
-    x_1 = p2d[:, 0]
-    y_1 = p2d[:, 1]
+    x_1, y_1 = p2d[:, 0], p2d[:, 1]
+    x_2, y_2 = ground_truth[:, 0], ground_truth[:, 1]
 
-    x_2 = ground_truth[:, 0]
-    y_2 = ground_truth[:, 1]
-
-    im = plt.imread("faces/dan.jpg")
-    implot = plt.imshow(im)
-    plt.scatter(x_1, y_1, color="b")
-    plt.scatter(x_2, y_2, color="r")
+    plt.imshow(img)
+    plt.scatter(x_1, y_1, color="b", s=3)
+    plt.scatter(x_2, y_2, color="r", s=3)
     plt.show()
 
     # x = whole_p3d[:, 0].detach().numpy()
@@ -258,15 +305,16 @@ def main():
     # plt.show()
 
     mesh = trimesh.base.Trimesh(
-        vertices=whole_p3d.detach().numpy()[:, :3],
+        vertices=whole_p3d_plot.detach().numpy()[:, :3],
         faces=triangles,
-        vertex_colors=mean_tex
+        vertex_colors=new_texture
     )
-    color, depth = render_mesh(mesh)
-    plt.imshow(color)
+    # color, depth = render_mesh(mesh)
+    # plt.imshow(color)
+    mesh.show()
 
-    plt.savefig("sampled_faces.png")
-    plt.show()
+    # plt.savefig("sampled_faces.png")
+    # plt.show()
 
     # TODO: estimate mapping that it aligns with image
     # TODO: Then exercise 5 should be quite straight forward
