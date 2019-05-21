@@ -125,7 +125,7 @@ class EnergyMin(nn.Module):
 
         loss = torch.sum((p2d - g).norm(dim=1).pow(2)) \
                + 0.5 * self.alpha.pow(2).sum() \
-               + 0.5 * self.delta.pow(2).sum()
+               + 0.25 * self.delta.pow(2).sum()
         return loss
 
 
