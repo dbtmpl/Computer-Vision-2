@@ -96,6 +96,7 @@ class EnergyMin(nn.Module):
         self.delta = nn.Parameter(torch.zeros(shape_e))
         T = torch.eye(4)
         T[2, 3] = -500
+        T[1, 1] = -1
         self.T = nn.Parameter(T)
 
         self.mu_shape = torch.from_numpy(mean_shape)
@@ -128,10 +129,34 @@ class EnergyMin(nn.Module):
         return loss
 
 
-def rescale(points):
-    m_points = (points - np.mean(points))
-    m = np.max(np.abs(m_points)) / 2
-    return m_points / m
+def normalize_points(points):
+    npoints = points.shape[0]
+    norm_points = np.zeros((0, npoints))
+    min_max = []
+
+    for i in np.arange(points.shape[1]):
+        _min, _max = np.min(points[:, i]), np.max(points[:, i])
+        norm_coords = (points[:, i] - _min) / (_max - _min)
+        norm_points = np.append(norm_points, norm_coords.reshape((1, npoints)), axis=0)
+        min_max.append((_min, _max))
+
+    return norm_points.T, min_max
+
+    # m_points = (points - np.min(points))
+    # m = np.max(np.abs(m_points)) / 2
+    # return m_points / m
+
+
+def denormalize_points(points, min_max):
+    npoints = points.shape[0]
+    denorm_points = np.zeros((0, npoints))
+
+    for i in np.arange(points.shape[1]):
+        _min, _max = min_max[i]
+        norm_coords = points[:, i] * (_max - _min) + _min
+        denorm_points = np.append(denorm_points, norm_coords.reshape((1, npoints)), axis=0)
+
+    return denorm_points.T
 
 
 def main():
@@ -170,6 +195,7 @@ def main():
     optimizer = torch.optim.Adam(model.parameters())
 
     points = mean_shape_fland + mean_expr_fland
+    points, min_max_points = normalize_points(points)
     S = np.concatenate((points, np.ones((npoints, 1))), axis=1)
 
     whole_points = mean_shape + mean_expr
@@ -181,11 +207,11 @@ def main():
     predictor = dlib.shape_predictor("Data/shape_predictor_68_face_landmarks.dat")
     dets = detector(img, 1)
     ground_truth = np.array([(point.x, point.y) for point in predictor(img, dets[0]).parts()])
-    # ground_truth = rescale(ground_truth)
+    norm_ground_truth, min_max_gt = normalize_points(ground_truth)
 
-    for i in range(100000):
+    for i in range(10000):
         optimizer.zero_grad()
-        out = model(S, ground_truth)
+        out = model(S, norm_ground_truth)
         out.backward()
         optimizer.step()
         print("Iter: {}, loss: {}".format(i, out.item()))
@@ -204,21 +230,24 @@ def main():
     whole_p3d = whole_p + torch.cat((whole_p3d, torch.zeros(n_whole_points, 1)), dim=1)
 
     # # Projection
-    # p2d = (p3d @ model.V @ model.P @ model.T)[:, :2]
+    p2d = (p3d @ model.V @ model.P @ model.T)[:, :2]
+    p2d = denormalize_points(p2d.detach().numpy(), min_max_gt)
+
+    # p2d = (p3d @ model.T)[:, :2]
 
     # p2d = (whole_p3d @ model.V @ model.P @ model.T)[:, :2][fland]
 
-    # x_1 = p2d[:, 0]
-    # y_1 = p2d[:, 1]
+    x_1 = p2d[:, 0]
+    y_1 = p2d[:, 1]
 
-    # # x_2 = whole_p3d[:, 0]
-    # # y_2 = ground_truth[:, 1]
+    x_2 = ground_truth[:, 0]
+    y_2 = ground_truth[:, 1]
 
-    # im = plt.imread("faces/dan.jpg")
-    # implot = plt.imshow(im)
-    # plt.scatter(x_1.detach().numpy(), y_1.detach().numpy(), color="b")
-    # plt.scatter(x_2, y_2, color="r")
-    # plt.show()
+    im = plt.imread("faces/dan.jpg")
+    implot = plt.imshow(im)
+    plt.scatter(x_1, y_1, color="b")
+    plt.scatter(x_2, y_2, color="r")
+    plt.show()
 
     # x = whole_p3d[:, 0].detach().numpy()
     # y = whole_p3d[:, 1].detach().numpy()
@@ -238,7 +267,6 @@ def main():
 
     plt.savefig("sampled_faces.png")
     plt.show()
-
 
     # TODO: estimate mapping that it aligns with image
     # TODO: Then exercise 5 should be quite straight forward
