@@ -100,7 +100,7 @@ class EnergyMin(nn.Module):
         shape_e = sigma2_expr.shape
 
         self.alpha = nn.Parameter(torch.zeros(shape_s))
-        self.delta = nn.Parameter(torch.zeros(shape_e))
+        self.delself.alphata = nn.Parameter(torch.zeros(shape_e))
 
         R, t = self.init_Rt()
         self.R = nn.Parameter(R)
@@ -126,11 +126,11 @@ class EnergyMin(nn.Module):
         p = torch.from_numpy(p).float()
         g = torch.from_numpy(g).float()
 
-        # x_1, y_1 = p[:, 0], p[:, 1]
-        # x_2, y_2 = g[:, 0], g[:, 1]
-        # plt.scatter(x_1.detach().numpy(), y_1.detach().numpy(), color="b", s=4)
-        # plt.scatter(x_2.detach().numpy(), y_2.detach().numpy(), color="y", s=4)
-        # plt.show()
+        x_1, y_1 = p[:, 0], p[:, 1]
+        x_2, y_2 = g[:, 0], g[:, 1]
+        plt.scatter(x_1.detach().numpy(), y_1.detach().numpy(), color="b", s=4)
+        plt.scatter(x_2.detach().numpy(), y_2.detach().numpy(), color="y", s=4)
+        plt.show()
 
         # p vector where the batch is expected to be in the first axis
         p3d_w = self.basis_shape @ (self.alpha * self.sigma_shape) \
@@ -141,11 +141,11 @@ class EnergyMin(nn.Module):
         p2d = self.project_points(p3d_w)
 
         # Plots for debugging
-        # x_1, y_1 = p2d[:, 0], p2d[:, 1]
-        # x_2, y_2 = g[:, 0], g[:, 1]
-        # plt.scatter(x_1.detach().numpy(), y_1.detach().numpy(), color="b", s=4)
-        # plt.scatter(x_2.detach().numpy(), y_2.detach().numpy(), color="y", s=4)
-        # plt.show()
+        x_1, y_1 = p2d[:, 0], p2d[:, 1]
+        x_2, y_2 = g[:, 0], g[:, 1]
+        plt.scatter(x_1.detach().numpy(), y_1.detach().numpy(), color="b", s=4)
+        plt.scatter(x_2.detach().numpy(), y_2.detach().numpy(), color="y", s=4)
+        plt.show()
 
         loss = torch.sum((p2d - g).norm(dim=1).pow(2)) + 5 * self.alpha.pow(2).sum() + 10 * self.delta.pow(2).sum()
         return loss
@@ -276,7 +276,7 @@ def exercise_4_and_5(model, optimizer, img, S_land, S_whole, face_model, triangl
     ground_truth = get_ground_truth_landmarks(img)
     norm_ground_truth, min_max_gt = normalize_points(ground_truth)
 
-    for i in range(200):
+    for i in range(2):
         optimizer.zero_grad()
         loss = model(S_land, norm_ground_truth)
         loss.backward()
@@ -320,10 +320,10 @@ def exercise_4_and_5(model, optimizer, img, S_land, S_whole, face_model, triangl
         vertex_colors=new_texture
     )
 
-    color, depth = render_mesh(mesh)
-    plt.imshow(color)
-    plt.savefig("rendered_person.png")
-    plt.show()
+    # color, depth = render_mesh(mesh)
+    # plt.imshow(color)
+    # plt.savefig("rendered_person.png")
+    # plt.show()
     mesh.show()
 
 
@@ -425,71 +425,52 @@ def exercise7(model, video_cap, S_land, S_whole, face_model, triangles, number_w
         print("Iter: {}, loss: {}".format(i, loss.item()))
 
     model.alpha.requires_grad = False
+    whole_p = torch.from_numpy(S_whole).float()
 
-    deltas = []
-    images = []
-    rigid_trans = []
-    for t in np.arange(20):
-        print("Current frame: ", t)
+    for i in np.arange(100):
+        print("Current frame: ", i)
         _ret, frame = video_cap.read()
         if _ret:
             ground_truth = get_ground_truth_landmarks(frame)
             norm_ground_truth, min_max_gt = normalize_points(ground_truth)
             optimizer = torch.optim.Adam(model.parameters(), lr=0.1)
-            for i in range(200):
+            for j in range(200):
                 optimizer.zero_grad()
                 out = model(S_land, norm_ground_truth)
                 out.backward()
                 optimizer.step()
-                print("Iter: {}, loss: {}".format(i, out.item()))
+                print("Iter: {}, loss: {}".format(j, out.item()))
 
-            rigid_trans.append((model.R, model.t))
+            rigid = model.R, model.t
+
+            # All alpha and gamma applied on all 3d points_land
+            whole_p3d_base = torch.from_numpy(basis_shape) @ (model.alpha * model.sigma_shape) \
+                             + torch.from_numpy(basis_expr) @ (model.delta * model.sigma_expr)
+            whole_p3d = whole_p + torch.cat((whole_p3d_base, torch.zeros(number_whole_points, 1)), dim=1)
+
+            # projection all points_land
+            whole_p2d = model.project_points(whole_p3d, rigid=rigid)
+            whole_p2d = denormalize_points(whole_p2d.detach().numpy()[:, :2], min_max_gt)
+            new_texture = find_corresponding_texture(whole_p2d, frame)
+
+            conv_p3d = denormalize_points(whole_p3d.detach().numpy()[:, :3], min_max_w_points)
+
+            mesh = trimesh.base.Trimesh(
+                vertices=conv_p3d,
+                faces=triangles,
+                vertex_colors=new_texture
+            )
+
+            mesh_to_png("video_results/my_mesh_{}.png".format(i), mesh)
+
             R, t = model.init_Rt()
             model.R = nn.Parameter(R)
             model.t = nn.Parameter(t)
-
-            deltas.append(model.delta)
             model.delta = nn.Parameter(torch.zeros(20))
-            images.append(frame)
 
         else:
             break
     video_cap.release()
-    whole_p = torch.from_numpy(S_whole).float()
-
-    for i, delta in enumerate(deltas):
-        img = images[i]
-        rigid = rigid_trans[i]
-
-        # All alpha and gamma applied on all 3d points_land
-        whole_p3d_base = torch.from_numpy(basis_shape) @ (model.alpha * model.sigma_shape) \
-                         + torch.from_numpy(basis_expr) @ (delta * model.sigma_expr)
-        whole_p3d = whole_p + torch.cat((whole_p3d_base, torch.zeros(number_whole_points, 1)), dim=1)
-
-        # projection all points_land
-        whole_p2d = model.project_points(whole_p3d, rigid=rigid)
-        whole_p2d = denormalize_points(whole_p2d.detach().numpy()[:, :2], min_max_gt)
-        new_texture = find_corresponding_texture(whole_p2d, img)
-
-        # TODO: Integrate rotation
-        # T = model.construct_T(rigid)
-        # conv_p3d = (T @ torch.t(whole_p3d)).T
-
-        conv_p3d = denormalize_points(whole_p3d.detach().numpy()[:, :3], min_max_w_points)
-
-        mesh = trimesh.base.Trimesh(
-            vertices=conv_p3d,
-            faces=triangles,
-            vertex_colors=new_texture
-        )
-
-        mesh_to_png("video_results/my_mesh_{}.png".format(i), mesh)
-
-        # color, depth = render_mesh(mesh)
-        # plt.imshow(color)
-        # plt.savefig("video_results/my_mesh_{}.png".format(i))
-        # plt.show()
-        # mesh.show()
 
 
 def main():
@@ -555,9 +536,9 @@ def main():
 
     face_model = basis_shape, basis_expr
 
-    # exercise_4_and_5(model, optimizer, img, S_land, S_whole, face_model, triangles, number_whole_points)
+    exercise_4_and_5(model, optimizer, img, S_land, S_whole, face_model, triangles, number_whole_points)
     # exercise_6(model, image_data, S_land, S_whole, face_model, triangles, number_whole_points)
-
+    #
     exercise7(model, video_cap, S_land, S_whole, face_model, triangles, number_whole_points, min_max_w_points)
 
 
