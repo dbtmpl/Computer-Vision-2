@@ -59,10 +59,10 @@ class ViewportMatrix(np.ndarray):
     Where Y is the height and Z the depth.
     """
 
-    def __new__(cls, l=-1, r=1, t=1, b=-1):
+    def __new__(cls, l=-1, b=-1, t=1, r=1):
         m = np.zeros((4, 4))
         m += np.diag(((r - l) / 2, (t - b) / 2, 0.5, 1))
-        m[3, :3] = ((r + l) / 2, (t + b) / 2, 0.5)
+        m[:3, 3] = ((r + l) / 2, (t + b) / 2, 0.5)
         return m.view(cls)
 
 
@@ -70,13 +70,13 @@ class PerspectiveMatrix(np.ndarray):
     """Assumes the order of the coordinates to be X, Y, Z"""
     FOV_SETTINGS = namedtuple(
         'FovSettings',
-        'top bottom right left near far'
+        'bottom left top right near far'
     )
 
     def __new__(cls, *args, **kwargs):
         return np.zeros((4, 4)).view(cls)
 
-    def __init__(self, fov=(1, -1, 1, -1, 10, 200)):
+    def __init__(self, fov=(-1, -1, 1, 1, 2, 100)):
         fov = self.FOV_SETTINGS(*fov)
 
         # Build the perspective proj matrix
@@ -86,15 +86,17 @@ class PerspectiveMatrix(np.ndarray):
         self[1, 1] = 2 * fov.near / (fov.top - fov.bottom)
         self[1, 2] = (fov.top + fov.bottom) / (fov.top - fov.bottom)
 
-        self[2, 2] = -(- (fov.far + fov.near) / (fov.far - fov.near))
-        self[2, 3] = -(- 2 * fov.far * fov.near / (fov.far - fov.near))
+        self[2, 2] = (- (fov.far + fov.near) / (fov.far - fov.near))
+        self[2, 3] = (- 2 * fov.far * fov.near / (fov.far - fov.near))
         self[3, 2] = -1
 
 
 class EnergyMin(nn.Module):
 
-    def __init__(self, mean_shape, sigma2_shape, basis_shape, mean_expr, sigma2_expr, basis_expr):
+    def __init__(self, mean_shape, sigma2_shape, basis_shape, mean_expr, sigma2_expr, basis_expr, im_shape):
         super().__init__()
+
+        bottom, right, _ = im_shape
 
         shape_s = sigma2_shape.shape
         shape_e = sigma2_expr.shape
@@ -113,8 +115,9 @@ class EnergyMin(nn.Module):
         self.basis_shape = torch.from_numpy(basis_shape)
         self.basis_expr = torch.from_numpy(basis_expr)
 
-        self.V = torch.from_numpy(ViewportMatrix()).float()
+        # self.P = torch.from_numpy(PerspectiveMatrix((0, 0, bottom, right, 10, 2000))).float()
         self.P = torch.from_numpy(PerspectiveMatrix()).float()
+        self.V = torch.from_numpy(ViewportMatrix(0, 0, bottom, right)).float()
 
     def forward(self, p, g):
         """
@@ -147,7 +150,7 @@ class EnergyMin(nn.Module):
         # plt.scatter(x_2.detach().numpy(), y_2.detach().numpy(), color="y", s=4)
         # plt.show()
 
-        loss = torch.sum((p2d - g).norm(dim=1).pow(2)) + 5 * self.alpha.pow(2).sum() + 10 * self.delta.pow(2).sum()
+        loss = torch.sum((p2d - g).norm(dim=1).pow(2)) + 1 * self.alpha.pow(2).sum() + 1 * self.delta.pow(2).sum()
         return loss
 
     def init_Rt(self):
@@ -155,7 +158,7 @@ class EnergyMin(nn.Module):
         # rotate 180 degrees!
         R[1, 1] = -1
         t = torch.zeros(3).view(-1, 1)
-        t[1] = 1
+        t[2] = -400
         return R, t
 
     def project_points(self, p3d_w, rigid=None):
@@ -271,11 +274,11 @@ def exercise_4_and_5(model, optimizer, img, S_land, S_whole, face_model, triangl
     basis_shape, basis_expr = face_model
 
     ground_truth = get_ground_truth_landmarks(img)
-    norm_ground_truth, min_max_gt = normalize_points(ground_truth)
+    # norm_ground_truth, min_max_gt = normalize_points(ground_truth)
 
     for i in range(300):
         optimizer.zero_grad()
-        loss = model(S_land, norm_ground_truth)
+        loss = model(S_land, ground_truth)
         loss.backward()
         optimizer.step()
         print("Iter: {}, loss: {}".format(i, loss.item()))
@@ -290,7 +293,8 @@ def exercise_4_and_5(model, optimizer, img, S_land, S_whole, face_model, triangl
 
     # Projection
     p2d = model.project_points(p3d_w)
-    p2d = denormalize_points(p2d.detach().numpy(), min_max_gt)
+    # p2d = denormalize_points(p2d.detach().numpy(), min_max_gt)
+    p2d = p2d.detach().numpy()
 
     x_1, y_1 = p2d[:, 0], p2d[:, 1]
     x_2, y_2 = ground_truth[:, 0], ground_truth[:, 1]
@@ -307,7 +311,8 @@ def exercise_4_and_5(model, optimizer, img, S_land, S_whole, face_model, triangl
 
     # projection all points_land
     whole_p2d = model.project_points(whole_p3d)
-    whole_p2d = denormalize_points(whole_p2d.detach().numpy()[:, :2], min_max_gt)
+    whole_p2d = whole_p2d.detach().numpy()
+    # whole_p2d = denormalize_points(whole_p2d.detach().numpy()[:, :2], min_max_gt)
     # Exercise 5
     new_texture = find_corresponding_texture(whole_p2d, img)
 
@@ -405,18 +410,18 @@ def exercise_6(model, images, S_land, S_whole, face_model, triangles, number_who
     mesh.show()
 
 
-def exercise7(model, video_cap, S_land, S_whole, face_model, triangles, number_whole_points, min_max_w_points):
+def exercise7(model, video_cap, S_land, S_whole, face_model, triangles, number_whole_points):
     optimizer = torch.optim.Adam(model.parameters(), lr=0.1)
     basis_shape, basis_expr = face_model
 
     _ret, first_frame = video_cap.read()
 
     ground_truth = get_ground_truth_landmarks(first_frame)
-    norm_ground_truth, min_max_gt = normalize_points(ground_truth)
+    # norm_ground_truth, min_max_gt = normalize_points(ground_truth)
 
     for i in range(200):
         optimizer.zero_grad()
-        loss = model(S_land, norm_ground_truth)
+        loss = model(S_land, ground_truth)
         loss.backward()
         optimizer.step()
         print("Iter: {}, loss: {}".format(i, loss.item()))
@@ -429,11 +434,11 @@ def exercise7(model, video_cap, S_land, S_whole, face_model, triangles, number_w
         _ret, frame = video_cap.read()
         if _ret:
             ground_truth = get_ground_truth_landmarks(frame)
-            norm_ground_truth, min_max_gt = normalize_points(ground_truth)
+            # norm_ground_truth, min_max_gt = normalize_points(ground_truth)
             optimizer = torch.optim.Adam(model.parameters(), lr=0.1)
             for j in range(200):
                 optimizer.zero_grad()
-                out = model(S_land, norm_ground_truth)
+                out = model(S_land, ground_truth)
                 out.backward()
                 optimizer.step()
                 print("Iter: {}, loss: {}".format(j, out.item()))
@@ -447,13 +452,13 @@ def exercise7(model, video_cap, S_land, S_whole, face_model, triangles, number_w
 
             # projection all points_land
             whole_p2d = model.project_points(whole_p3d, rigid=rigid)
-            whole_p2d = denormalize_points(whole_p2d.detach().numpy()[:, :2], min_max_gt)
-            new_texture = find_corresponding_texture(whole_p2d, frame)
+            # whole_p2d = denormalize_points(whole_p2d.detach().numpy()[:, :2], min_max_gt)
+            new_texture = find_corresponding_texture(whole_p2d.detach().numpy()[:, :2], frame)
 
-            conv_p3d = denormalize_points(whole_p3d.detach().numpy()[:, :3], min_max_w_points)
+            # conv_p3d = denormalize_points(whole_p3d.detach().numpy()[:, :3], min_max_w_points)
 
             mesh = trimesh.base.Trimesh(
-                vertices=conv_p3d,
+                vertices=whole_p3d.detach().numpy()[:, :3],
                 faces=triangles,
                 vertex_colors=new_texture
             )
@@ -495,14 +500,16 @@ def main():
 
     # Images for exercise 4
     # img = dlib.load_rgb_image("faces/dan.jpg")
-    img = dlib.load_rgb_image("faces/surprise.png")
+    # img = dlib.load_rgb_image("faces/surprise.png")
     # img = dlib.load_rgb_image("faces/exercise_6/dave1.jpg")
-
-    # images for exercise 6
-    image_data = [cv.imread(image) for image in sorted(glob.glob("faces/exercise_6/*.jpg"))]
 
     # Load video for exercise 7
     video_cap = cv.VideoCapture("faces/exercise_7/smile.mp4")
+    _ret, img = video_cap.read()
+    img = img[:, :450, :]
+
+    # Get shape of current input image
+    im_shape = img.shape
 
     # Instantiate the model
     model = EnergyMin(
@@ -511,32 +518,36 @@ def main():
         basis_shape_land,
         mean_expr_land,
         sigma2_expr,
-        basis_expr_land
+        basis_expr_land,
+        im_shape
     )
     optimizer = torch.optim.Adam(model.parameters(), lr=0.1)
 
+    # Check initialized matrices
     print("P Matrix")
     print(model.P)
-
     print("V Matrix")
     print(model.V)
 
     # Landmark points
     points_land = mean_shape_land + mean_expr_land
-    points_land, min_max_points_land = normalize_points(points_land)
     S_land = np.concatenate((points_land, np.ones((number_landmark, 1))), axis=1)
 
     # Total points of 3D face model
     whole_points = mean_shape + mean_expr
-    whole_points_norm, min_max_w_points = normalize_points(whole_points, min_max_points_land)
-    S_whole = np.concatenate((whole_points_norm, np.ones((number_whole_points, 1))), axis=1)
+    S_whole = np.concatenate((whole_points, np.ones((number_whole_points, 1))), axis=1)
+
+    # Normalize input for better convergence - Not used at the moment
+    # points_land_norm, min_max_points_land = normalize_points(points_land)
+    # S_land_norm = np.concatenate((points_land_norm, np.ones((number_landmark, 1))), axis=1)
+    # whole_points_norm, min_max_w_points = normalize_points(whole_points, min_max_points_land)
+    # S_whole_norm = np.concatenate((whole_points_norm, np.ones((number_whole_points, 1))), axis=1)
 
     face_model = basis_shape, basis_expr
 
-    exercise_4_and_5(model, optimizer, img, S_land, S_whole, face_model, triangles, number_whole_points)
+    # exercise_4_and_5(model, optimizer, img, S_land, S_whole, face_model, triangles, number_whole_points)
     # exercise_6(model, image_data, S_land, S_whole, face_model, triangles, number_whole_points)
-    #
-    # exercise7(model, video_cap, S_land, S_whole, face_model, triangles, number_whole_points, min_max_w_points)
+    exercise7(model, video_cap, S_land, S_whole, face_model, triangles, number_whole_points)
 
 
 if __name__ == "__main__":
