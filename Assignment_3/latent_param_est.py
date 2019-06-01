@@ -59,9 +59,9 @@ class ViewportMatrix(np.ndarray):
     Where Y is the height and Z the depth.
     """
 
-    def __new__(cls, l=-1, b=-1, t=1, r=1):
+    def __new__(cls, l, b, t, r):
         m = np.zeros((4, 4))
-        m += np.diag(((r - l) / 2, (t - b) / 2, 0.5, 1))
+        m += np.diag(((r - l) / 2, -(t - b) / 2, 0.5, 1))
         m[:3, 3] = ((r + l) / 2, (t + b) / 2, 0.5)
         return m.view(cls)
 
@@ -70,21 +70,27 @@ class PerspectiveMatrix(np.ndarray):
     """Assumes the order of the coordinates to be X, Y, Z"""
     FOV_SETTINGS = namedtuple(
         'FovSettings',
-        'bottom left top right near far'
+        'aspect_ratio near far'
     )
 
     def __new__(cls, *args, **kwargs):
         return np.zeros((4, 4)).view(cls)
 
-    def __init__(self, fov=(-1, -1, 1, 1, 2, 100)):
+    def __init__(self, fov=(1, 1, 100)):
         fov = self.FOV_SETTINGS(*fov)
 
-        # Build the perspective proj matrix
-        self[0, 0] = 2 * fov.near / (fov.right - fov.left)
-        self[0, 2] = (fov.right + fov.left) / (fov.right - fov.left)
+        fovy = 1
+        top = np.tan(fovy/2) * fov.near
+        bottom = -top
+        right = top * fov.aspect_ratio
+        left = -right
 
-        self[1, 1] = 2 * fov.near / (fov.top - fov.bottom)
-        self[1, 2] = (fov.top + fov.bottom) / (fov.top - fov.bottom)
+        # Build the perspective proj matrix
+        self[0, 0] = 2 * fov.near / (right - left)
+        self[0, 2] = (right + left) / (right - left)
+
+        self[1, 1] = 2 * fov.near / (top - bottom)
+        self[1, 2] = (top + bottom) / (top - bottom)
 
         self[2, 2] = (- (fov.far + fov.near) / (fov.far - fov.near))
         self[2, 3] = (- 2 * fov.far * fov.near / (fov.far - fov.near))
@@ -96,7 +102,8 @@ class EnergyMin(nn.Module):
     def __init__(self, mean_shape, sigma2_shape, basis_shape, mean_expr, sigma2_expr, basis_expr, im_shape):
         super().__init__()
 
-        bottom, right, _ = im_shape
+        height, width, _ = im_shape
+        aspect_ratio = width / height
 
         shape_s = sigma2_shape.shape
         shape_e = sigma2_expr.shape
@@ -116,8 +123,8 @@ class EnergyMin(nn.Module):
         self.basis_expr = torch.from_numpy(basis_expr)
 
         # self.P = torch.from_numpy(PerspectiveMatrix((0, 0, bottom, right, 10, 2000))).float()
-        self.P = torch.from_numpy(PerspectiveMatrix()).float()
-        self.V = torch.from_numpy(ViewportMatrix(0, 0, bottom, right)).float()
+        self.P = torch.from_numpy(PerspectiveMatrix((aspect_ratio, 300, 2000))).float()
+        self.V = torch.from_numpy(ViewportMatrix(0, 0, height, width)).float()
 
     def forward(self, p, g):
         """
@@ -150,13 +157,16 @@ class EnergyMin(nn.Module):
         # plt.scatter(x_2.detach().numpy(), y_2.detach().numpy(), color="y", s=4)
         # plt.show()
 
-        loss = torch.sum((p2d - g).norm(dim=1).pow(2)) + 1 * self.alpha.pow(2).sum() + 1 * self.delta.pow(2).sum()
+        lambda_alpha = 50
+        lambda_beta = 10
+
+        loss = torch.sum((p2d - g).norm(dim=1).pow(2)) + lambda_alpha * self.alpha.pow(2).sum() + lambda_beta * self.delta.pow(2).sum()
         return loss
 
     def init_Rt(self):
         R = torch.eye(3)
         # rotate 180 degrees!
-        R[1, 1] = -1
+        # R[1, 1] = -1
         t = torch.zeros(3).view(-1, 1)
         t[2] = -400
         return R, t
@@ -436,7 +446,7 @@ def exercise7(model, video_cap, S_land, S_whole, face_model, triangles, number_w
             ground_truth = get_ground_truth_landmarks(frame)
             # norm_ground_truth, min_max_gt = normalize_points(ground_truth)
             optimizer = torch.optim.Adam(model.parameters(), lr=0.1)
-            for j in range(200):
+            for j in range(300):
                 optimizer.zero_grad()
                 out = model(S_land, ground_truth)
                 out.backward()
@@ -501,12 +511,13 @@ def main():
     # Images for exercise 4
     # img = dlib.load_rgb_image("faces/dan.jpg")
     # img = dlib.load_rgb_image("faces/surprise.png")
-    # img = dlib.load_rgb_image("faces/exercise_6/dave1.jpg")
+    img = dlib.load_rgb_image("faces/exercise_6/dave1.jpg")
 
     # Load video for exercise 7
-    video_cap = cv.VideoCapture("faces/exercise_7/smile.mp4")
-    _ret, img = video_cap.read()
-    img = img[:, :450, :]
+    # video_cap = cv.VideoCapture("faces/exercise_7/smile.mp4")
+    # _ret, img = video_cap.read()
+    # TODO: Make this adaptive by getting the ground truth face landmarks!
+    # img = img[:, :450, :]
 
     # Get shape of current input image
     im_shape = img.shape
@@ -545,9 +556,9 @@ def main():
 
     face_model = basis_shape, basis_expr
 
-    # exercise_4_and_5(model, optimizer, img, S_land, S_whole, face_model, triangles, number_whole_points)
+    exercise_4_and_5(model, optimizer, img, S_land, S_whole, face_model, triangles, number_whole_points)
     # exercise_6(model, image_data, S_land, S_whole, face_model, triangles, number_whole_points)
-    exercise7(model, video_cap, S_land, S_whole, face_model, triangles, number_whole_points)
+    # exercise7(model, video_cap, S_land, S_whole, face_model, triangles, number_whole_points)
 
 
 if __name__ == "__main__":
