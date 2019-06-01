@@ -100,7 +100,7 @@ class EnergyMin(nn.Module):
         shape_e = sigma2_expr.shape
 
         self.alpha = nn.Parameter(torch.zeros(shape_s))
-        self.delta = nn.Parameter(torch.zeros(shape_e))
+        self.delta = nn.Parameter(torch.zeros(1, shape_e))
 
         R, t = self.init_Rt()
         self.R = nn.Parameter(R)
@@ -115,6 +115,7 @@ class EnergyMin(nn.Module):
 
         self.V = torch.from_numpy(ViewportMatrix()).float()
         self.P = torch.from_numpy(PerspectiveMatrix()).float()
+        breakpoint()
 
     def forward(self, p, g):
         """
@@ -126,19 +127,24 @@ class EnergyMin(nn.Module):
         p = torch.from_numpy(p).float()
         g = torch.from_numpy(g).float()
 
+        if p.dim() == 3 and self.delta.shape != [p.shape[0], self.delta.shape[-1]]:
+            print('[WARN]: RESET GRAD FOR δ BECAUSE OF BS CHANGE.')
+            self.delta = torch.zeros_like((p.shape[0], self.delta.shape[-1]))
+            self.data.zero_grad()
+        bs = self.delta.shape[0]
+
         # x_1, y_1 = p[:, 0], p[:, 1]
         # x_2, y_2 = g[:, 0], g[:, 1]
         # plt.scatter(x_1.detach().numpy(), y_1.detach().numpy(), color="b", s=4)
         # plt.scatter(x_2.detach().numpy(), y_2.detach().numpy(), color="y", s=4)
         # plt.show()
+        p3d_shape = self.basis_shape @ (self.alpha * self.sigma_shape)
+        p3d_expr = (self.basis_expr @ (self.delta * self.sigma_expr).t()).permute((2, 0, 1))
+        p3d_w = p + torch.cat((p3d_shape + p3d_expr, torch.zeros(bs, 68, 1)), dim=-1)
 
-        # p vector where the batch is expected to be in the first axis
-        p3d_w = self.basis_shape @ (self.alpha * self.sigma_shape) \
-                + self.basis_expr @ (self.delta * self.sigma_expr)
-
-        p3d_w = p + torch.cat((p3d_w, torch.zeros(68, 1)), dim=1)
-
-        p2d = self.project_points(p3d_w)
+        p2d = torch.zeros((bs, 68, 2))
+        for i in range(bs):
+            p2d[i, ...] = self.project_points(p3d_w[i, ...])
 
         # Plots for debugging
         # x_1, y_1 = p2d[:, 0], p2d[:, 1]
@@ -147,7 +153,9 @@ class EnergyMin(nn.Module):
         # plt.scatter(x_2.detach().numpy(), y_2.detach().numpy(), color="y", s=4)
         # plt.show()
 
-        loss = torch.sum((p2d - g).norm(dim=1).pow(2)) + 5 * self.alpha.pow(2).sum() + 10 * self.delta.pow(2).sum()
+        loss = (p2d - g).norm(-1).pow(2).sum(-1).mean()\
+               + 5 * self.alpha.pow(2).sum()\
+               + 10 * self.delta.pow(2).sum(-1).mean()
         return loss
 
     def init_Rt(self):
@@ -495,14 +503,15 @@ def main():
 
     # Images for exercise 4
     # img = dlib.load_rgb_image("faces/dan.jpg")
-    img = dlib.load_rgb_image("faces/surprise.png")
+    # img = dlib.load_rgb_image("faces/surprise.png")
+    img = dlib.load_rgb_image("faces/morris.jpg")
     # img = dlib.load_rgb_image("faces/exercise_6/dave1.jpg")
 
     # images for exercise 6
     image_data = [cv.imread(image) for image in sorted(glob.glob("faces/exercise_6/*.jpg"))]
 
     # Load video for exercise 7
-    video_cap = cv.VideoCapture("faces/exercise_7/smile.mp4")
+    # video_cap = cv.VideoCapture("faces/exercise_7/smile.mp4")
 
     # Instantiate the model
     model = EnergyMin(
