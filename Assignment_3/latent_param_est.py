@@ -7,6 +7,7 @@ from torch import nn
 import matplotlib.pyplot as plt
 import trimesh
 import pyrender
+import cv2 as cv
 
 from skimage.io import imsave
 from mpl_toolkits.mplot3d import Axes3D
@@ -104,7 +105,7 @@ class EnergyMin(nn.Module):
         shape_e = sigma2_expr.shape
 
         self.alpha = nn.Parameter(torch.zeros(shape_s))
-        self.delta = nn.Parameter(torch.zeros(1, shape_e))
+        self.delta = nn.Parameter(torch.zeros((1,) + shape_e))
 
         R, t = self.init_Rt()
         self.R = nn.Parameter(R)
@@ -250,7 +251,7 @@ def find_corresponding_texture(points, image):
 
     for i, point in enumerate(points):
         x, y = point[0] + 1e-2, point[1] + 1e-2
-        if y < 0 or y > im_height or x < 0 or x > im_width:
+        if y < 0 or y >= im_height - 1 or x < 0 or x >= im_width - 1:
             # Save indices of points that are outside the image, such that we may delete those later
             out_of_bounds.append(i)
             continue
@@ -320,7 +321,7 @@ def exercise_4_and_5(model, optimizer, img, S_land, S_whole, face_model, triangl
 
     # p vector where the batch is expected to be in the first axis
     p3d_w = model.basis_shape @ (model.alpha * model.sigma_shape) \
-            + model.basis_expr @ (model.delta * model.sigma_expr)
+            + model.basis_expr @ (model.delta[:, -1] * model.sigma_expr)
     p3d_w = p + torch.cat((p3d_w, torch.zeros(68, 1)), dim=1)
 
     # Projection
@@ -338,7 +339,7 @@ def exercise_4_and_5(model, optimizer, img, S_land, S_whole, face_model, triangl
 
     # All alpha and gamma applied on all 3d points_land
     whole_p3d_base = torch.from_numpy(basis_shape) @ (model.alpha * model.sigma_shape) \
-                     + torch.from_numpy(basis_expr) @ (model.delta * model.sigma_expr)
+                     + torch.from_numpy(basis_expr) @ (model.delta[:, -1] * model.sigma_expr)
     whole_p3d = whole_p + torch.cat((whole_p3d_base, torch.zeros(number_whole_points, 1)), dim=1)
 
     # projection all points_land
@@ -362,18 +363,20 @@ def exercise_6(model, images, S_land, S_whole, face_model, triangles, number_who
     pass
 
 
-def exercise7(model, video_cap, S_land, S_whole, face_model, triangles, number_whole_points):
+def exercise7(model, filep, S_land, S_whole, face_model, triangles, number_whole_points, bs=1):
     optimizer = torch.optim.Adam(model.parameters(), lr=0.1)
     basis_shape, basis_expr = face_model
 
-    _ret, first_frame = video_cap.read()
 
-    ground_truth = get_ground_truth_landmarks(first_frame)
+    video_cap = cv.VideoCapture(filep)
+    frames = [video_cap.read()[1] for _ in range(bs)]
+
+    ground_truths = np.array(list(map(get_ground_truth_landmarks, frames)))
     # norm_ground_truth, min_max_gt = normalize_points(ground_truth)
 
     for i in range(200):
         optimizer.zero_grad()
-        loss = model(S_land, ground_truth)
+        loss = model(S_land, ground_truths)
         loss.backward()
         optimizer.step()
         print("Iter: {}, loss: {}".format(i, loss.item()))
@@ -381,10 +384,18 @@ def exercise7(model, video_cap, S_land, S_whole, face_model, triangles, number_w
     model.alpha.requires_grad = False
     whole_p = torch.from_numpy(S_whole).float()
 
+    video_cap.release()
+    video_cap = cv.VideoCapture(filep)
+
     for i in np.arange(100):
         print("Current frame: ", i)
         _ret, frame = video_cap.read()
         if _ret:
+            R, t = model.init_Rt()
+            model.R = nn.Parameter(R)
+            model.t = nn.Parameter(t)
+            model.delta = nn.Parameter(torch.zeros(1, 20))
+
             ground_truth = get_ground_truth_landmarks(frame)
             # norm_ground_truth, min_max_gt = normalize_points(ground_truth)
             optimizer = torch.optim.Adam(model.parameters(), lr=0.1)
@@ -399,7 +410,7 @@ def exercise7(model, video_cap, S_land, S_whole, face_model, triangles, number_w
 
             # All alpha and gamma applied on all 3d points_land
             whole_p3d_base = torch.from_numpy(basis_shape) @ (model.alpha * model.sigma_shape) \
-                             + torch.from_numpy(basis_expr) @ (model.delta * model.sigma_expr)
+                             + torch.from_numpy(basis_expr) @ (model.delta[:, -1] * model.sigma_expr)
             whole_p3d = whole_p + torch.cat((whole_p3d_base, torch.zeros(number_whole_points, 1)), dim=1)
 
             # projection all points_land
@@ -416,11 +427,6 @@ def exercise7(model, video_cap, S_land, S_whole, face_model, triangles, number_w
             )
 
             mesh_to_png("video_results/my_mesh_{}.png".format(i), mesh)
-
-            R, t = model.init_Rt()
-            model.R = nn.Parameter(R)
-            model.t = nn.Parameter(t)
-            model.delta = nn.Parameter(torch.zeros(20))
 
         else:
             break
@@ -456,10 +462,12 @@ def main():
     # img = dlib.load_rgb_image("faces/exercise_6/dave1.jpg")
 
     # Load video for exercise 7
-    # video_cap = cv.VideoCapture("faces/exercise_7/smile.mp4")
-    # _ret, img = video_cap.read()
+    video_filep = "faces/exercise_7/smile.mp4"
+    video_cap = cv.VideoCapture(video_filep)
+    _ret, img = video_cap.read()
     # TODO: Make this adaptive by getting the ground truth face landmarks!
-    # img = img[:, :450, :]
+    img = img[:, :450, :]
+    video_cap.release()
 
     # Get shape of current input image
     im_shape = img.shape
@@ -500,7 +508,7 @@ def main():
 
     exercise_4_and_5(model, optimizer, img, S_land, S_whole, face_model, triangles, number_whole_points)
     # exercise_6(model, image_data, S_land, S_whole, face_model, triangles, number_whole_points)
-    # exercise7(model, video_cap, S_land, S_whole, face_model, triangles, number_whole_points)
+    exercise7(model, video_filep, S_land, S_whole, face_model, triangles, number_whole_points)
 
 
 if __name__ == "__main__":
