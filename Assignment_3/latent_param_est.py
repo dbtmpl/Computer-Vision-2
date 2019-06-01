@@ -305,10 +305,10 @@ def visualize_landmarks(img, dets, predictor):
 def exercise_4_and_5(model, optimizer, img, S_land, S_whole, face_model, triangles, number_whole_points):
     basis_shape, basis_expr = face_model
 
-    ground_truth = get_ground_truth_landmarks(img, visualize=True)
+    ground_truth = get_ground_truth_landmarks(img, visualize=False)
     # norm_ground_truth, min_max_gt = normalize_points(ground_truth)
 
-    for i in range(1):
+    for i in range(300):
         optimizer.zero_grad()
         loss = model(S_land, ground_truth)
         loss.backward()
