@@ -25,7 +25,7 @@ def print_attrs(name, obj):
         print("\t%s: %s" % (key, val))
 
 
-def mesh_to_png(file_name, mesh, width=640, height=480, z_camera_translation=400):
+def mesh_to_png(file_name, mesh, width=640, height=480, z_camera_translation=275):
     # mesh = trimesh.base.Trimesh(
     #     vertices=mesh.vertices,
     #     faces=mesh.triangles,
@@ -35,17 +35,17 @@ def mesh_to_png(file_name, mesh, width=640, height=480, z_camera_translation=400
 
     # compose scene
     scene = pyrender.Scene(ambient_light=np.array([1.7, 1.7, 1.7, 1.0]), bg_color=[255, 255, 255])
-    camera = pyrender.PerspectiveCamera(yfov=np.pi / 3.0)
-    light = pyrender.DirectionalLight(color=[1, 1, 1], intensity=2e3)
+    camera = pyrender.PerspectiveCamera( yfov=np.pi / 3.0)
+    light = pyrender.DirectionalLight(color=[1,1,1], intensity=2e3)
 
     scene.add(mesh, pose=np.eye(4))
     scene.add(light, pose=np.eye(4))
 
     # Added camera translated z_camera_translation in the 0z direction w.r.t. the origin
-    scene.add(camera, pose=[[1, 0, 0, 0],
-                            [0, 1, 0, 0],
-                            [0, 0, 1, z_camera_translation],
-                            [0, 0, 0, 1]])
+    scene.add(camera, pose=[[ 1,  0,  0,  0],
+                            [ 0,  1,  0,  0],
+                            [ 0,  0,  1,  z_camera_translation],
+                            [ 0,  0,  0,  1]])
 
     # render scene
     r = pyrender.OffscreenRenderer(width, height)
@@ -92,8 +92,8 @@ class PerspectiveMatrix(np.ndarray):
         self[1, 1] = 2 * fov.near / (top - bottom)
         self[1, 2] = (top + bottom) / (top - bottom)
 
-        self[2, 2] = (- (fov.far + fov.near) / (fov.far - fov.near))
-        self[2, 3] = (- 2 * fov.far * fov.near / (fov.far - fov.near))
+        self[2, 2] = - (fov.far + fov.near) / (fov.far - fov.near)
+        self[2, 3] = - 2 * fov.far * fov.near / (fov.far - fov.near)
         self[3, 2] = -1
 
 
@@ -193,7 +193,6 @@ class EnergyMin(nn.Module):
         # p3d_image = self.V @ p3d_c
 
         return torch.t(p3d_c[:2, :])
-        # return torch.t(p3d_c[:2, :])
 
     def construct_T(self, rigid=None):
         if rigid is None:
@@ -332,10 +331,7 @@ def exercise_4_and_5(model, optimizer, img, S_land, S_whole, face_model, triangl
         vertex_colors=new_texture
     )
 
-    # color, depth = render_mesh(mesh)
-    # plt.imshow(color)
-    # plt.savefig("rendered_person.png")
-    # plt.show()
+    mesh_to_png("rendered_face.png", mesh)
     mesh.show()
 
 
