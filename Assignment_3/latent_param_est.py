@@ -100,7 +100,7 @@ class EnergyMin(nn.Module):
         shape_e = sigma2_expr.shape
 
         self.alpha = nn.Parameter(torch.zeros(shape_s))
-        self.delself.alphata = nn.Parameter(torch.zeros(shape_e))
+        self.delta = nn.Parameter(torch.zeros(shape_e))
 
         R, t = self.init_Rt()
         self.R = nn.Parameter(R)
@@ -126,11 +126,11 @@ class EnergyMin(nn.Module):
         p = torch.from_numpy(p).float()
         g = torch.from_numpy(g).float()
 
-        x_1, y_1 = p[:, 0], p[:, 1]
-        x_2, y_2 = g[:, 0], g[:, 1]
-        plt.scatter(x_1.detach().numpy(), y_1.detach().numpy(), color="b", s=4)
-        plt.scatter(x_2.detach().numpy(), y_2.detach().numpy(), color="y", s=4)
-        plt.show()
+        # x_1, y_1 = p[:, 0], p[:, 1]
+        # x_2, y_2 = g[:, 0], g[:, 1]
+        # plt.scatter(x_1.detach().numpy(), y_1.detach().numpy(), color="b", s=4)
+        # plt.scatter(x_2.detach().numpy(), y_2.detach().numpy(), color="y", s=4)
+        # plt.show()
 
         # p vector where the batch is expected to be in the first axis
         p3d_w = self.basis_shape @ (self.alpha * self.sigma_shape) \
@@ -141,11 +141,11 @@ class EnergyMin(nn.Module):
         p2d = self.project_points(p3d_w)
 
         # Plots for debugging
-        x_1, y_1 = p2d[:, 0], p2d[:, 1]
-        x_2, y_2 = g[:, 0], g[:, 1]
-        plt.scatter(x_1.detach().numpy(), y_1.detach().numpy(), color="b", s=4)
-        plt.scatter(x_2.detach().numpy(), y_2.detach().numpy(), color="y", s=4)
-        plt.show()
+        # x_1, y_1 = p2d[:, 0], p2d[:, 1]
+        # x_2, y_2 = g[:, 0], g[:, 1]
+        # plt.scatter(x_1.detach().numpy(), y_1.detach().numpy(), color="b", s=4)
+        # plt.scatter(x_2.detach().numpy(), y_2.detach().numpy(), color="y", s=4)
+        # plt.show()
 
         loss = torch.sum((p2d - g).norm(dim=1).pow(2)) + 5 * self.alpha.pow(2).sum() + 10 * self.delta.pow(2).sum()
         return loss
@@ -267,16 +267,13 @@ def get_ground_truth_landmarks(img, predictor=None):
     return ground_truth
 
 
-# def optimize_params():
-
-
 def exercise_4_and_5(model, optimizer, img, S_land, S_whole, face_model, triangles, number_whole_points):
     basis_shape, basis_expr = face_model
 
     ground_truth = get_ground_truth_landmarks(img)
     norm_ground_truth, min_max_gt = normalize_points(ground_truth)
 
-    for i in range(2):
+    for i in range(300):
         optimizer.zero_grad()
         loss = model(S_land, norm_ground_truth)
         loss.backward()
@@ -498,8 +495,8 @@ def main():
 
     # Images for exercise 4
     # img = dlib.load_rgb_image("faces/dan.jpg")
-    # img = dlib.load_rgb_image("faces/surprise.png")
-    img = dlib.load_rgb_image("faces/exercise_6/dave1.jpg")
+    img = dlib.load_rgb_image("faces/surprise.png")
+    # img = dlib.load_rgb_image("faces/exercise_6/dave1.jpg")
 
     # images for exercise 6
     image_data = [cv.imread(image) for image in sorted(glob.glob("faces/exercise_6/*.jpg"))]
@@ -539,7 +536,7 @@ def main():
     exercise_4_and_5(model, optimizer, img, S_land, S_whole, face_model, triangles, number_whole_points)
     # exercise_6(model, image_data, S_land, S_whole, face_model, triangles, number_whole_points)
     #
-    exercise7(model, video_cap, S_land, S_whole, face_model, triangles, number_whole_points, min_max_w_points)
+    # exercise7(model, video_cap, S_land, S_whole, face_model, triangles, number_whole_points, min_max_w_points)
 
 
 if __name__ == "__main__":
