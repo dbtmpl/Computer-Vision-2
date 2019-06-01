@@ -132,11 +132,10 @@ class EnergyMin(nn.Module):
         p = torch.from_numpy(p).float()
         g = torch.from_numpy(g).float()
 
-        if p.dim() == 3 and self.delta.shape != [p.shape[0], self.delta.shape[-1]]:
+        bs = p.shape[0] if p.dim() == 3 else 1
+        if self.delta.shape != (bs, self.delta.shape[-1]):
             print('[WARN]: RESET GRAD FOR δ BECAUSE OF BS CHANGE.')
-            self.delta = torch.zeros_like((p.shape[0], self.delta.shape[-1]))
-            self.data.zero_grad()
-        bs = self.delta.shape[0]
+            self.delta = nn.Parameter(torch.zeros((bs, self.delta.shape[-1])))
 
         # x_1, y_1 = p[:, 0], p[:, 1]
         # x_2, y_2 = g[:, 0], g[:, 1]
@@ -158,8 +157,8 @@ class EnergyMin(nn.Module):
         # plt.scatter(x_2.detach().numpy(), y_2.detach().numpy(), color="y", s=4)
         # plt.show()
 
-        lambda_alpha = 50
-        lambda_beta = 10
+        lambda_alpha = 5
+        lambda_beta = 1
         loss = (p2d - g).abs().sum() / bs \
                + lambda_alpha * self.alpha.pow(2).sum()\
                + lambda_beta * self.delta.pow(2).sum(-1).mean()
@@ -509,7 +508,7 @@ def main():
     exercise_4_and_5(model, optimizer, img, S_land, S_whole, face_model, triangles, number_whole_points)
     # exercise_6(model, image_data, S_land, S_whole, face_model, triangles, number_whole_points)
     # BS is batch size for estimating α
-    # exercise7(model, video_filep, S_land, S_whole, face_model, triangles, number_whole_points, bs=5)
+    exercise7(model, video_filep, S_land, S_whole, face_model, triangles, number_whole_points, bs=5)
 
 
 if __name__ == "__main__":
