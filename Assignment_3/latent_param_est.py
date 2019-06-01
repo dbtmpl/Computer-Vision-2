@@ -508,7 +508,8 @@ def main():
 
     exercise_4_and_5(model, optimizer, img, S_land, S_whole, face_model, triangles, number_whole_points)
     # exercise_6(model, image_data, S_land, S_whole, face_model, triangles, number_whole_points)
-    exercise7(model, video_filep, S_land, S_whole, face_model, triangles, number_whole_points)
+    # BS is batch size for estimating α
+    exercise7(model, video_filep, S_land, S_whole, face_model, triangles, number_whole_points, bs=5)
 
 
 if __name__ == "__main__":
