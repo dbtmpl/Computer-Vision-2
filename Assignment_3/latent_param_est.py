@@ -35,17 +35,17 @@ def mesh_to_png(file_name, mesh, width=640, height=480, z_camera_translation=275
 
     # compose scene
     scene = pyrender.Scene(ambient_light=np.array([1.7, 1.7, 1.7, 1.0]), bg_color=[255, 255, 255])
-    camera = pyrender.PerspectiveCamera( yfov=np.pi / 3.0)
-    light = pyrender.DirectionalLight(color=[1,1,1], intensity=2e3)
+    camera = pyrender.PerspectiveCamera(yfov=np.pi / 3.0)
+    light = pyrender.DirectionalLight(color=[1, 1, 1], intensity=2e3)
 
     scene.add(mesh, pose=np.eye(4))
     scene.add(light, pose=np.eye(4))
 
     # Added camera translated z_camera_translation in the 0z direction w.r.t. the origin
-    scene.add(camera, pose=[[ 1,  0,  0,  0],
-                            [ 0,  1,  0,  0],
-                            [ 0,  0,  1,  z_camera_translation],
-                            [ 0,  0,  0,  1]])
+    scene.add(camera, pose=[[1, 0, 0, 0],
+                            [0, 1, 0, 0],
+                            [0, 0, 1, z_camera_translation],
+                            [0, 0, 0, 1]])
 
     # render scene
     r = pyrender.OffscreenRenderer(width, height)
@@ -76,11 +76,11 @@ class PerspectiveMatrix(np.ndarray):
     def __new__(cls, *args, **kwargs):
         return np.zeros((4, 4)).view(cls)
 
-    def __init__(self, fov=(1, 1, 100)):
+    def __init__(self, fov=(1, 300, 2000)):
         fov = self.FOV_SETTINGS(*fov)
 
         fovy = 1
-        top = np.tan(fovy/2) * fov.near
+        top = np.tan(fovy / 2) * fov.near
         bottom = -top
         right = top * fov.aspect_ratio
         left = -right
@@ -160,7 +160,8 @@ class EnergyMin(nn.Module):
         lambda_alpha = 50
         lambda_beta = 10
 
-        loss = torch.sum((p2d - g).norm(dim=1).pow(2)) + lambda_alpha * self.alpha.pow(2).sum() + lambda_beta * self.delta.pow(2).sum()
+        loss = torch.sum((p2d - g).norm(dim=1).pow(2)) + lambda_alpha * self.alpha.pow(
+            2).sum() + lambda_beta * self.delta.pow(2).sum()
         return loss
 
     def init_Rt(self):
@@ -268,7 +269,7 @@ def find_corresponding_texture(points, image):
     return new_texture
 
 
-def get_ground_truth_landmarks(img, predictor=None):
+def get_ground_truth_landmarks(img, predictor=None, visualize=False):
     if predictor is None:
         predictor = dlib.shape_predictor("Data/shape_predictor_68_face_landmarks.dat")
 
@@ -276,16 +277,38 @@ def get_ground_truth_landmarks(img, predictor=None):
     dets = detector(img, 1)
     ground_truth = np.array([(point.x, point.y) for point in predictor(img, dets[0]).parts()])
 
+    if visualize:
+        print("HERE")
+        visualize_landmarks(img, dets, predictor)
+
     return ground_truth
+
+
+def visualize_landmarks(img, dets, predictor):
+    win = dlib.image_window()
+    win.clear_overlay()
+    win.set_image(img)
+
+    print("Number of faces detected: {}".format(len(dets)))
+    for k, d in enumerate(dets):
+        print("Detection {}: Left: {} Top: {} Right: {} Bottom: {}".format(
+            k, d.left(), d.top(), d.right(), d.bottom()))
+        # Get the landmarks/parts for the face in box d.
+        shape = predictor(img, d)
+
+        # Draw the face landmarks on the screen.
+        win.add_overlay(shape)
+
+    dlib.hit_enter_to_continue()
 
 
 def exercise_4_and_5(model, optimizer, img, S_land, S_whole, face_model, triangles, number_whole_points):
     basis_shape, basis_expr = face_model
 
-    ground_truth = get_ground_truth_landmarks(img)
+    ground_truth = get_ground_truth_landmarks(img, visualize=True)
     # norm_ground_truth, min_max_gt = normalize_points(ground_truth)
 
-    for i in range(300):
+    for i in range(1):
         optimizer.zero_grad()
         loss = model(S_land, ground_truth)
         loss.backward()
@@ -505,9 +528,9 @@ def main():
     number_whole_points = mean_shape.shape[0]
 
     # Images for exercise 4
-    # img = dlib.load_rgb_image("faces/dan.jpg")
+    img = dlib.load_rgb_image("faces/dan.jpg")
     # img = dlib.load_rgb_image("faces/surprise.png")
-    img = dlib.load_rgb_image("faces/exercise_6/dave1.jpg")
+    # img = dlib.load_rgb_image("faces/exercise_6/dave1.jpg")
 
     # Load video for exercise 7
     # video_cap = cv.VideoCapture("faces/exercise_7/smile.mp4")
