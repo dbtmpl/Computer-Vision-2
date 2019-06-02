@@ -156,7 +156,7 @@ class EnergyMin(nn.Module):
         lambda_beta = 1
         loss = (p2d - g).abs().sum() / bs \
                + lambda_alpha * self.alpha.pow(2).sum()\
-               + lambda_beta * self.delta.pow(2).sum(-1).mean()
+               + lambda_beta * self.delta.pow(2).sum() / bs
         return loss
 
     def init_Rt(self):
@@ -356,7 +356,43 @@ def exercise_4_and_5(model, optimizer, img, S_land, S_whole, face_model, triangl
 
 
 def exercise_6(model, images, S_land, S_whole, face_model, triangles, number_whole_points):
-    pass
+    basis_shape, basis_expr = face_model
+
+    ground_truths = list(map(get_ground_truth_landmarks, images))
+
+    for m in range(1, 20, 5):
+        model.delta = nn.Parameter(torch.zeros(m, model.delta.shape[-1]))
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.1)
+
+        for i in range(300):
+            optimizer.zero_grad()
+            loss = model(S_land, np.array(ground_truths[:m]))
+            loss.backward()
+            optimizer.step()
+            print("Iter: {}, loss: {}".format(i, loss.item()))
+
+        whole_p = torch.from_numpy(S_whole).float()
+
+        # All alpha and gamma applied on all 3d points_land
+        whole_p3d_base = torch.from_numpy(basis_shape) @ (model.alpha * model.sigma_shape) \
+                         + torch.from_numpy(basis_expr) @ (model.delta[0, :].flatten() * model.sigma_expr)
+        whole_p3d = whole_p + torch.cat((whole_p3d_base, torch.zeros(number_whole_points, 1)), dim=1)
+
+        # projection all points_land
+        whole_p2d = model.project_points(whole_p3d)
+        whole_p2d = whole_p2d.detach().numpy()
+        # whole_p2d = denormalize_points(whole_p2d.detach().numpy()[:, :2], min_max_gt)
+        # Exercise 5
+        new_texture = find_corresponding_texture(whole_p2d, images[0])
+
+        mesh = trimesh.base.Trimesh(
+            vertices=whole_p3d.detach().numpy()[:, :3],
+            faces=triangles,
+            vertex_colors=new_texture
+        )
+
+        mesh_to_png(f"face6_{m}.png", mesh)
+        #mesh.show()
 
 
 def exercise7(model, filep, S_land, S_whole, face_model, triangles, number_whole_points, bs=1):
@@ -450,18 +486,27 @@ def main():
     number_landmark = len(landmarks_model)
     number_whole_points = mean_shape.shape[0]
 
+    do_4, do_6, do_7 = False, True, False
+
     # Images for exercise 4
-    img = dlib.load_rgb_image("faces/dan.jpg")
-    # img = dlib.load_rgb_image("faces/surprise.png")
-    # img = dlib.load_rgb_image("faces/exercise_6/dave1.jpg")
+    if do_4:
+        img = dlib.load_rgb_image("faces/dan.jpg")
+        # img = dlib.load_rgb_image("faces/surprise.png")
+        # img = dlib.load_rgb_image("faces/exercise_6/dave1.jpg")
+
+    # For question 6
+    if do_6:
+        imgs = [dlib.load_rgb_image(f"faces/exercise_6/frame{i:02d}.jpg") for i in range(1, 100, 5)]
+        img = imgs[0]
 
     # Load video for exercise 7
-    video_filep = "faces/exercise_7/smile.mp4"
-    video_cap = cv.VideoCapture(video_filep)
-    # _ret, img = video_cap.read()
-    # TODO: Make this adaptive by getting the ground truth face landmarks!
-    # img = img[:, :450, :]
-    video_cap.release()
+    if do_7:
+        video_filep = "faces/exercise_7/smile.mp4"
+        video_cap = cv.VideoCapture(video_filep)
+        _ret, img = video_cap.read()
+        # TODO: Make this adaptive by getting the ground truth face landmarks!
+        img = img[:, :450, :]
+        video_cap.release()
 
     # Get shape of current input image
     im_shape = img.shape
@@ -500,10 +545,13 @@ def main():
 
     face_model = basis_shape, basis_expr
 
-    exercise_4_and_5(model, optimizer, img, S_land, S_whole, face_model, triangles, number_whole_points)
-    # exercise_6(model, image_data, S_land, S_whole, face_model, triangles, number_whole_points)
-    # BS is batch size for estimating α
-    # exercise7(model, video_filep, S_land, S_whole, face_model, triangles, number_whole_points, bs=5)
+    if do_4:
+        exercise_4_and_5(model, optimizer, img, S_land, S_whole, face_model, triangles, number_whole_points)
+    if do_6:
+        exercise_6(model, imgs, S_land, S_whole, face_model, triangles, number_whole_points)
+    if do_7:
+        # BS is batch size for estimating α
+        exercise7(model, video_filep, S_land, S_whole, face_model, triangles, number_whole_points, bs=20)
 
 
 if __name__ == "__main__":
