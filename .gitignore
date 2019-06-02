@@ -5,3 +5,7 @@ Assignment_2/Reading/*
 *.xml
 __pycache__/
 .venv/
+Assignment_3/.ipynb_checkpoints/*
+Assignment_3/Data/*
+Assignment_3/faces/*
+
