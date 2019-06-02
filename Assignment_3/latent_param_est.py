@@ -152,9 +152,9 @@ class EnergyMin(nn.Module):
         # plt.scatter(x_1.detach().numpy(), y_1.detach().numpy(), color="b", s=4)
         # plt.scatter(x_2.detach().numpy(), y_2.detach().numpy(), color="y", s=4)
         # plt.show()
-        lambda_alpha = 5
-        lambda_beta = 1
-        loss = (p2d - g).abs().sum() / bs \
+        lambda_alpha = 2
+        lambda_beta = 1e-4
+        loss = (p2d - g).abs().sum() / (68*bs) \
                + lambda_alpha * self.alpha.pow(2).sum()\
                + lambda_beta * self.delta.pow(2).sum() / bs
         return loss
@@ -360,11 +360,13 @@ def exercise_6(model, images, S_land, S_whole, face_model, triangles, number_who
 
     ground_truths = list(map(get_ground_truth_landmarks, images))
 
-    for m in range(1, 20, 5):
+    for m in range(1, 5, 3):
+        model.alpha = nn.Parameter(torch.zeros_like(model.alpha))
         model.delta = nn.Parameter(torch.zeros(m, model.delta.shape[-1]))
+        model.init_Rt()
         optimizer = torch.optim.Adam(model.parameters(), lr=0.1)
 
-        for i in range(300):
+        for i in range(m * 300):
             optimizer.zero_grad()
             loss = model(S_land, np.array(ground_truths[:m]))
             loss.backward()
@@ -496,7 +498,7 @@ def main():
 
     # For question 6
     if do_6:
-        imgs = [dlib.load_rgb_image(f"faces/exercise_6/frame{i:02d}.jpg") for i in range(1, 100, 5)]
+        imgs = [dlib.load_rgb_image(f"faces/exercise_7/frame{i}.jpg")[:, :450, :] for i in range(1, 5)]
         img = imgs[0]
 
     # Load video for exercise 7
