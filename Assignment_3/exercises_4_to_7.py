@@ -154,8 +154,8 @@ class EnergyMin(nn.Module):
         # plt.show()
         lambda_alpha = 2
         lambda_beta = 1e-4
-        loss = (p2d - g).abs().sum() / (68*bs) \
-               + lambda_alpha * self.alpha.pow(2).sum()\
+        loss = (p2d - g).abs().sum() / (68 * bs) \
+               + lambda_alpha * self.alpha.pow(2).sum() \
                + lambda_beta * self.delta.pow(2).sum() / bs
         return loss
 
@@ -370,7 +370,7 @@ def exercise_6(model, images, S_land, S_whole, face_model, triangles, number_who
         model.init_Rt()
         optimizer = torch.optim.Adam(model.parameters(), lr=0.1)
 
-        for i in range(m * 300):
+        for i in range(m * 100):
             optimizer.zero_grad()
             loss = model(S_land, np.array(ground_truths[:m]))
             loss.backward()
@@ -398,7 +398,7 @@ def exercise_6(model, images, S_land, S_whole, face_model, triangles, number_who
         )
 
         mesh_to_png(f"face6_{m}.png", mesh)
-        #mesh.show()
+        # mesh.show()
 
 
 def exercise7(model, filep, S_land, S_whole, face_model, triangles, number_whole_points, bs=1):
@@ -412,7 +412,7 @@ def exercise7(model, filep, S_land, S_whole, face_model, triangles, number_whole
     ground_truths = np.array(list(map(get_ground_truth_landmarks, frames)))
     # norm_ground_truth, min_max_gt = normalize_points(ground_truth)
 
-    for i in range(200):
+    for i in range(100):
         optimizer.zero_grad()
         loss = model(S_land, ground_truths)
         loss.backward()
@@ -435,7 +435,7 @@ def exercise7(model, filep, S_land, S_whole, face_model, triangles, number_whole
             model.init_Rt()
             model.delta = nn.Parameter(torch.zeros(1, 20))
             optimizer = torch.optim.Adam(model.parameters(), lr=0.1)
-            for j in range(300):
+            for j in range(100):
                 optimizer.zero_grad()
                 out = model(S_land, ground_truth)
                 out.backward()
@@ -492,18 +492,17 @@ def main():
     number_landmark = len(landmarks_model)
     number_whole_points = mean_shape.shape[0]
 
-    do_4, do_6, do_7 = True, True, False
-    d0_4_eval = True
+    do_4, do_6, do_7, do_4_eval = False, False, True, False
 
     # Images for exercise 4
-    if do_4:
-        img = dlib.load_rgb_image("faces/dan.jpg")
+    if do_4 or do_4_eval:
+        img = dlib.load_rgb_image("faces/dan2.jpg")
         # img = dlib.load_rgb_image("faces/surprise.png")
         # img = dlib.load_rgb_image("faces/exercise_6/dave1.jpg")
 
     # For question 6
     if do_6:
-        imgs = [dlib.load_rgb_image(f"faces/exercise_7/frame{i}.jpg")[:, :450, :] for i in range(1, 5)]
+        imgs = [dlib.load_rgb_image(f"faces/exercise_6/frame{i}.jpg")[:, :450, :] for i in range(1, 5)]
         img = imgs[0]
 
     # Load video for exercise 7
@@ -559,7 +558,7 @@ def main():
     if do_7:
         # BS is batch size for estimating α
         exercise7(model, video_filep, S_land, S_whole, face_model, triangles, number_whole_points, bs=20)
-    if do_ex_4_eval:
+    if do_4_eval:
         loss_neutral = exercise_4_and_5(model, optimizer, img, S_land, S_whole, face_model, triangles,
                                         number_whole_points)
 
